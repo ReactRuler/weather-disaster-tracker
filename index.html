@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌍 Agente de Alertas de Desastres Naturales - En Vivo</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
+         crossorigin=""/>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header Principal -->
+        <header class="app-header">
+            <div class="header-content">
+                <h1>🌍 Agente de Alertas de Desastres</h1>
+                <div class="header-controls">
+                    <div class="connection-status" id="connection-status">
+                        <span class="status status--info">🔄 Conectando a fuentes en vivo...</span>
+                    </div>
+                    <button class="btn btn--primary btn--sm" id="update-all">🔄 Actualizar Todo</button>
+                    <button class="btn btn--outline btn--sm" id="toggle-sound">🔊 Sonido: ON</button>
+                    <button class="btn btn--outline btn--sm" id="toggle-theme">🌙 Modo Oscuro</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Dashboard Principal -->
+        <main class="app-main">
+            <!-- Estadísticas en Tiempo Real -->
+            <section class="realtime-dashboard">
+                <div class="section-header">
+                    <h2>📊 Dashboard en Tiempo Real</h2>
+                    <div class="update-info">
+                        <span class="status status--info" id="last-update">Cargando datos en vivo...</span>
+                    </div>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">🌍</div>
+                        <div class="stat-content">
+                            <div class="stat-number" id="earthquake-count">1</div>
+                            <div class="stat-label">Terremotos Hoy</div>
+                            <div class="stat-detail">M6.0 Papúa Nueva Guinea</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🌋</div>
+                        <div class="stat-content">
+                            <div class="stat-number" id="volcano-count">3</div>
+                            <div class="stat-label">Volcanes Activos</div>
+                            <div class="stat-detail">Semeru + Kilauea + Great Sitkin</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🔥</div>
+                        <div class="stat-content">
+                            <div class="stat-number" id="fire-count">1</div>
+                            <div class="stat-label">Incendios Monitoreados</div>
+                            <div class="stat-detail">Múltiples países detectados</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">⛈️</div>
+                        <div class="stat-content">
+                            <div class="stat-number" id="storm-count">1</div>
+                            <div class="stat-label">Tormentas Activas</div>
+                            <div class="stat-detail">Vietnam Norte</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Mapa Interactivo con LEYENDA POR TIPOS -->
+            <section class="map-section">
+                <div class="section-header">
+                    <h2>🗺️ Mapa Global de Eventos</h2>
+                    <div class="map-controls">
+                        <div class="map-filters">
+                            <select class="form-control" id="map-type-filter">
+                                <option value="all">Mostrar todos</option>
+                                <option value="earthquake">Solo terremotos</option>
+                                <option value="volcano">Solo volcanes</option>
+                                <option value="wildfire">Solo incendios</option>
+                                <option value="storm">Solo tormentas</option>
+                            </select>
+                        </div>
+                        <button class="btn btn--outline btn--sm" id="center-map">🎯 Centrar Mapa</button>
+                    </div>
+                </div>
+                
+                <div class="map-container">
+                    <div class="map-wrapper">
+                        <!-- MAPA LEAFLET REAL -->
+                        <div id="disaster-map"></div>
+                        <!-- Botón de pantalla completa -->
+                        <div class="map-enhanced-controls">
+                            <button class="map-control-btn fullscreen-btn" id="fullscreen-map-btn" title="Ver mapa en pantalla completa">
+                                🔍 <span>Pantalla Completa</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="map-legend">
+                        <h5>Leyenda por Tipos</h5>
+                        <div class="legend-items">
+                            <div class="legend-item">
+                                <span class="legend-marker">🌍</span>
+                                <span>Terremotos</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-marker">🌊</span>
+                                <span>Tsunamis</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-marker">🌋</span>
+                                <span>Erupciones Volcánicas</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-marker">⛰️</span>
+                                <span>Deslizamientos</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-marker">🌀</span>
+                                <span>Huracanes</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-marker">🌪️</span>
+                                <span>Tornados</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-marker">⛈️</span>
+                                <span>Tormentas</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-marker">💧</span>
+                                <span>Inundaciones</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-marker">🏜️</span>
+                                <span>Sequías</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-marker">🔥</span>
+                                <span>Olas de Calor</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-marker">❄️</span>
+                                <span>Olas de Frío</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-marker">🌨️</span>
+                                <span>Nevadas Extremas</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-marker">🔥</span>
+                                <span>Incendios Forestales</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Eventos Recientes Verificados CON BOTONES - ÚNICA SECCIÓN -->
+            <section class="recent-events-section">
+                <div class="section-header">
+                    <h2>🚨 Eventos Recientes Verificados</h2>
+                    <div class="events-controls">
+                        <button class="btn btn--secondary btn--sm" id="refresh-events">🔄 Actualizar</button>
+                        <div class="filter-controls">
+                            <select class="form-control" id="event-type-filter">
+                                <option value="all">Todos los tipos</option>
+                                <option value="volcano">🌋 Volcanes</option>
+                                <option value="earthquake">🌍 Terremotos</option>
+                                <option value="wildfire">🔥 Incendios</option>
+                                <option value="storm">⛈️ Tormentas</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="events-grid" id="events-grid">
+                    <!-- Los eventos se cargarán aquí -->
+                </div>
+            </section>
+
+            <!-- Noticias Verificadas CON BOTONES -->
+            <section class="news-section">
+                <div class="section-header">
+                    <h2 id="news-title">📰 Noticias Verificadas</h2>
+                    <div class="news-controls">
+                        <select class="form-control" id="continent-filter">
+                            <option value="all">Todos los continentes</option>
+                            <option value="europa">Europa</option>
+                            <option value="asia">Asia</option>
+                            <option value="america">América</option>
+                            <option value="africa">África</option>
+                            <option value="oceania">Oceanía</option>
+                        </select>
+                        <button class="btn btn--outline btn--sm" id="refresh-news">🔄 Actualizar Noticias</button>
+                    </div>
+                </div>
+                
+                <div class="news-grid" id="news-grid">
+                    <!-- Las noticias se cargarán aquí -->
+                </div>
+                <div class="pagination-controls" id="news-pagination">
+                    <!-- Paginación para noticias -->
+                </div>
+            </section>
+
+            <!-- Configuración Personalizada EXPANDIBLE -->
+            <section class="config-section">
+                <div class="section-header">
+                    <h2 id="config-header" class="config-toggle">📋 Expandir Configuración</h2>
+                    <div class="config-actions">
+                        <button class="btn btn--primary btn--sm" id="save-config">💾 Guardar Configuración</button>
+                    </div>
+                </div>
+                
+                <div class="config-content hidden" id="config-content">
+                    <div class="config-grid">
+                        <div class="config-group">
+                            <h4>🌐 Tipos de Desastres a Monitorear</h4>
+                            <div class="disaster-types">
+                                <div class="type-category">
+                                    <h5>Geológicos:</h5>
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" id="monitor-earthquake" checked>
+                                        <span>🌍 Terremotos</span>
+                                    </label>
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" id="monitor-tsunami" checked>
+                                        <span>🌊 Tsunamis</span>
+                                    </label>
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" id="monitor-volcano" checked>
+                                        <span>🌋 Erupciones Volcánicas</span>
+                                    </label>
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" id="monitor-landslide" checked>
+                                        <span>⛰️ Deslizamientos</span>
+                                    </label>
+                                </div>
+                                <div class="type-category">
+                                    <h5>Hidrometeorológicos:</h5>
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" id="monitor-hurricane" checked>
+                                        <span>🌀 Huracanes</span>
+                                    </label>
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" id="monitor-tornado" checked>
+                                        <span>🌪️ Tornados</span>
+                                    </label>
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" id="monitor-storm" checked>
+                                        <span>⛈️ Tormentas</span>
+                                    </label>
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" id="monitor-flood" checked>
+                                        <span>💧 Inundaciones</span>
+                                    </label>
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" id="monitor-drought" checked>
+                                        <span>🏜️ Sequías</span>
+                                    </label>
+                                </div>
+                                <div class="type-category">
+                                    <h5>Climáticos y Otros:</h5>
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" id="monitor-heatwave" checked>
+                                        <span>🔥 Olas de Calor</span>
+                                    </label>
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" id="monitor-coldwave" checked>
+                                        <span>❄️ Olas de Frío</span>
+                                    </label>
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" id="monitor-snowstorm" checked>
+                                        <span>🌨️ Nevadas Extremas</span>
+                                    </label>
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" id="monitor-wildfire" checked>
+                                        <span>🔥 Incendios Forestales</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="config-group">
+                            <h4>🔔 Configuración de Alertas</h4>
+                            <div class="form-group">
+                                <label class="form-label">Ubicación Principal:</label>
+                                <input type="text" class="form-control" id="location-input" placeholder="Madrid, España">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Radio de Monitoreo (km): <span id="radius-value">500</span></label>
+                                <input type="range" class="form-control" id="radius-slider" min="50" max="2000" value="500">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Frecuencia:</label>
+                                <select class="form-control" id="update-frequency">
+                                    <option value="1">Cada 1 minuto</option>
+                                    <option value="5" selected>Cada 5 minutos</option>
+                                    <option value="15">Cada 15 minutos</option>
+                                    <option value="30">Cada 30 minutos</option>
+                                    <option value="60">Cada hora</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Nivel Mínimo:</label>
+                                <select class="form-control" id="alert-level">
+                                    <option value="all" selected>Todos los Niveles</option>
+                                    <option value="moderate">Moderado y Superior</option>
+                                    <option value="high">Alto y Superior</option>
+                                    <option value="critical">Solo Crítico</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Métodos:</label>
+                                <label class="checkbox-item">
+                                    <input type="checkbox" id="push-notifications" checked>
+                                    <span>📱 Push</span>
+                                </label>
+                                <label class="checkbox-item">
+                                    <input type="checkbox" id="email-notifications">
+                                    <span>📧 Email</span>
+                                </label>
+                                <label class="checkbox-item">
+                                    <input type="checkbox" id="sms-notifications">
+                                    <span>💬 SMS</span>
+                                </label>
+                                <label class="checkbox-item">
+                                    <input type="checkbox" id="webhook-notifications">
+                                    <span>🔗 Webhook</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="save-status" id="save-status" style="margin-top: var(--space-16); display: none;">
+                        <!-- Status de guardado aparecerá aquí -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Estado APIs Oficiales MOVIDO AL FINAL -->
+            <section class="apis-section">
+                <div class="section-header">
+                <h2>🌐 Estado de APIs Oficiales</h2>
+                <div class="api-controls">
+                    <div class="api-timestamp">
+                        <span class="status status--info" id="api-timestamp">Verificando conexiones...</span>
+                    </div>
+                        <div class="api-actions">
+                            <button class="btn btn--secondary btn--sm" id="check-all-apis">🔍 Verificar Todas</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="apis-grid" id="apis-status-grid">
+                    <!-- El estado de las APIs se cargará aquí -->
+                </div>
+                <div class="pagination-controls" id="apis-pagination">
+                    <!-- Paginación para APIs -->
+                </div>
+            </section>
+        </main>
+
+        <!-- Panel de Notificaciones -->
+        <div class="notification-panel" id="notification-panel">
+            <!-- Las notificaciones se añadirán aquí -->
+        </div>
+
+        <!-- Modal de Pantalla Completa -->
+        <div class="fullscreen-modal hidden" id="fullscreen-modal">
+            <div class="fullscreen-header">
+                <h3>🗺️ Mapa Global de Eventos - Pantalla Completa</h3>
+                <button class="fullscreen-close-btn" id="close-fullscreen-btn" title="Salir de pantalla completa">
+                    ✕ Cerrar Pantalla Completa
+                </button>
+            </div>
+            <div class="fullscreen-map-container">
+                <div class="fullscreen-map" id="fullscreen-map">
+                    <!-- El mapa Leaflet también se mostrará aquí -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Audio para notificaciones -->
+        <audio id="notification-sound" preload="auto">
+            <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N+QQAoUXrTp66hVFApGn+L1uW0fCCuFzfLNeSsFJHfH8N2QQAoTXrTp66hVFApGn+L1uW4fCCuFzfLNeSsFJHfH8N2QQAoTXrTp66hVFApGn+L1uW4fCCuFzfLNeSsFJHfH8N2QQAoTXrTp66hVFApGn+L1uW4fCCuFzfLNeSsFJHfH8N2QQAoTXrTp66hVFApGn+L1uW4fCCuFzfLNeSsFJHfH8N2QQAoTXrTp66hVFApGn+L1uW4fCCuFzfLNeSsFJHfH8N2QQAoTXrTp66hVFApGn+L1uW4fCCuFzfLNeSsFJHfH8N2QQAoTXrTp66hVFApGn+L1uW4fCCuFzfLNeSsFJHfH8N2QQAoTXrTp66hVFApGn+L1uW4fCCuFzfLNeSsFJHfH8N2QQAoTXrTp66hVFApGn+L1uW4fCCuFzfLNeSsFJHfH8N2QQAoTXrTp66hVFApGn+L1uW4fCCuFzfLNeSsFJHfH8N2QQAoTXrTp66hVFApGn+L1uW4fCCuFzfLNeSsFJHfH8N2QQAoTXrTp66hVFApGn+L1uW4fCC" type="audio/wav">
+        </audio>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+         crossorigin=""></script>
+    <script src="app.js"></script>
+</body>
+</html>

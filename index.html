@@ -79,15 +79,6 @@
                 <div class="section-header">
                     <h2>🗺️ Mapa Global de Eventos</h2>
                     <div class="map-controls">
-                        <div class="map-filters">
-                            <select class="form-control" id="map-type-filter">
-                                <option value="all">Mostrar todos</option>
-                                <option value="earthquake">Solo terremotos</option>
-                                <option value="volcano">Solo volcanes</option>
-                                <option value="wildfire">Solo incendios</option>
-                                <option value="storm">Solo tormentas</option>
-                            </select>
-                        </div>
                         <button class="btn btn--outline btn--sm" id="center-map">🎯 Centrar Mapa</button>
                     </div>
                 </div>
@@ -105,59 +96,63 @@
                     </div>
                     <div class="map-legend">
                         <h5>Leyenda por Tipos</h5>
-                        <div class="legend-items">
-                            <div class="legend-item">
+                        <div class="legend-items" id="map-legend-items">
+                            <button type="button" class="legend-item active" data-filter="all">
+                                <span class="legend-marker">🌐</span>
+                                <span>Todos</span>
+                            </button>
+                            <button type="button" class="legend-item" data-filter="earthquake">
                                 <span class="legend-marker">🌍</span>
                                 <span>Terremotos</span>
-                            </div>
-                            <div class="legend-item">
+                            </button>
+                            <button type="button" class="legend-item" data-filter="tsunami">
                                 <span class="legend-marker">🌊</span>
                                 <span>Tsunamis</span>
-                            </div>
-                            <div class="legend-item">
+                            </button>
+                            <button type="button" class="legend-item" data-filter="volcano">
                                 <span class="legend-marker">🌋</span>
                                 <span>Erupciones Volcánicas</span>
-                            </div>
-                            <div class="legend-item">
+                            </button>
+                            <button type="button" class="legend-item" data-filter="landslide">
                                 <span class="legend-marker">⛰️</span>
                                 <span>Deslizamientos</span>
-                            </div>
-                            <div class="legend-item">
+                            </button>
+                            <button type="button" class="legend-item" data-filter="hurricane">
                                 <span class="legend-marker">🌀</span>
                                 <span>Huracanes</span>
-                            </div>
-                            <div class="legend-item">
+                            </button>
+                            <button type="button" class="legend-item" data-filter="tornado">
                                 <span class="legend-marker">🌪️</span>
                                 <span>Tornados</span>
-                            </div>
-                            <div class="legend-item">
+                            </button>
+                            <button type="button" class="legend-item" data-filter="storm">
                                 <span class="legend-marker">⛈️</span>
                                 <span>Tormentas</span>
-                            </div>
-                            <div class="legend-item">
+                            </button>
+                            <button type="button" class="legend-item" data-filter="flood">
                                 <span class="legend-marker">💧</span>
                                 <span>Inundaciones</span>
-                            </div>
-                            <div class="legend-item">
+                            </button>
+                            <button type="button" class="legend-item" data-filter="drought">
                                 <span class="legend-marker">🏜️</span>
                                 <span>Sequías</span>
-                            </div>
-                            <div class="legend-item">
+                            </button>
+                            <button type="button" class="legend-item" data-filter="heatwave">
                                 <span class="legend-marker">🔥</span>
                                 <span>Olas de Calor</span>
-                            </div>
-                            <div class="legend-item">
+                            </button>
+                            <button type="button" class="legend-item" data-filter="coldwave">
                                 <span class="legend-marker">❄️</span>
                                 <span>Olas de Frío</span>
-                            </div>
-                            <div class="legend-item">
+                            </button>
+                            <button type="button" class="legend-item" data-filter="snowstorm">
                                 <span class="legend-marker">🌨️</span>
                                 <span>Nevadas Extremas</span>
-                            </div>
-                            <div class="legend-item">
+                            </button>
+                            <button type="button" class="legend-item" data-filter="wildfire">
                                 <span class="legend-marker">🔥</span>
                                 <span>Incendios Forestales</span>
-                            </div>
+                            </button>
                         </div>
                     </div>
                 </div>

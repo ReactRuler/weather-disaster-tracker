@@ -1108,14 +1108,37 @@ select.form-control {
   display: flex;
   align-items: center;
   gap: var(--space-8);
+  width: 100%;
+  padding: var(--space-8) var(--space-10);
   font-size: var(--font-size-sm);
   color: var(--color-text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-base);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition:
+    background var(--duration-normal) var(--ease-standard),
+    border-color var(--duration-normal) var(--ease-standard);
+}
+
+.legend-item:hover {
+  background: rgba(var(--color-teal-500-rgb), 0.1);
+  border-color: rgba(var(--color-teal-500-rgb), 0.25);
+}
+
+.legend-item.active {
+  background: rgba(var(--color-teal-500-rgb), 0.18);
+  border-color: var(--color-primary);
+  font-weight: var(--font-weight-semibold);
 }
 
 .legend-marker {
   font-size: 1.2rem;
   width: 24px;
   text-align: center;
+  flex-shrink: 0;
 }
 
 /* Modal pantalla completa */

@@ -318,6 +318,7 @@ let autoRefreshTimer = null;
 let ultimaActualizacionLive = null;
 let datosEnVivoActivos = false;
 let idsAlertados = new Set();
+let mapFiltroActivo = "all";
 
 const realtimeAPIs = {
   usgsEarthquakesDay:
@@ -933,19 +934,42 @@ function popupEventoHTML(evento) {
             `;
 }
 
+function actualizarLeyendaActiva(filtro) {
+  document.querySelectorAll(".legend-item[data-filter]").forEach((el) => {
+    el.classList.toggle("active", el.dataset.filter === filtro);
+  });
+}
+
+function setMapFiltro(filtro) {
+  mapFiltroActivo = filtro;
+  actualizarLeyendaActiva(filtro);
+  loadEventsToMap();
+}
+
+function configurarLeyendaMapa() {
+  const legend = document.getElementById("map-legend-items");
+  if (!legend) return;
+  legend.addEventListener("click", (e) => {
+    const item = e.target.closest(".legend-item[data-filter]");
+    if (!item) return;
+    setMapFiltro(item.dataset.filter);
+  });
+  actualizarLeyendaActiva(mapFiltroActivo);
+}
+
+function eventoCoincideFiltroMapa(evento, filtro) {
+  if (filtro === "all") return true;
+  return evento.categoria === filtro;
+}
+
 function loadEventsToMap() {
   if (!mapaLeaflet) return;
 
   marcadoresVisibles.forEach((marker) => mapaLeaflet.removeLayer(marker));
   marcadoresVisibles = [];
 
-  const filtro =
-    (document.getElementById("map-type-filter") &&
-      document.getElementById("map-type-filter").value) ||
-    "all";
-
   appData.eventosRealesHoy.forEach((evento) => {
-    if (filtro !== "all" && evento.categoria !== filtro) return;
+    if (!eventoCoincideFiltroMapa(evento, mapFiltroActivo)) return;
     if (evento.lat && evento.lng) {
       const marker = L.marker([evento.lat, evento.lng], {
         icon: crearIconoMarcador(evento, 36),
@@ -1033,8 +1057,7 @@ function configurarEventListeners() {
   if (checkApisBtn)
     checkApisBtn.addEventListener("click", verificarTodasLasAPIs);
 
-  const mapTypeFilter = document.getElementById("map-type-filter");
-  if (mapTypeFilter) mapTypeFilter.addEventListener("change", loadEventsToMap);
+  configurarLeyendaMapa();
 
   const updateFrequencySel = document.getElementById("update-frequency");
   if (updateFrequencySel) {
@@ -1370,13 +1393,8 @@ function abrirMapaPantallaCompleta() {
           '© <a href="https://leafletjs.com/">Leaflet</a> | © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       }).addTo(mapaFullscreen);
 
-      const filtro =
-        (document.getElementById("map-type-filter") &&
-          document.getElementById("map-type-filter").value) ||
-        "all";
-
       appData.eventosRealesHoy.forEach((evento) => {
-        if (filtro !== "all" && evento.categoria !== filtro) return;
+        if (!eventoCoincideFiltroMapa(evento, mapFiltroActivo)) return;
         if (evento.lat && evento.lng) {
           const marker = L.marker([evento.lat, evento.lng], {
             icon: crearIconoMarcador(evento, 48),

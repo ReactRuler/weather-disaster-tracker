@@ -137,142 +137,33 @@ const appData = {
     },
   ],
 
-  // 16 APIs completas organizadas por categorías - DATOS DINÁMICOS
   apisCompletas: [
     {
-      categoria: "Terremotos & Tsunamis",
+      categoria: "Fuentes en tiempo real",
       apis: [
         {
-          nombre: "USGS Earthquakes RSS",
-          url: "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.atom",
-          estado: "conectado",
-          latencia: "76ms",
-          actualizado: "18 sept, 20:47",
+          nombre: "USGS Earthquake Hazards",
+          url: "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson",
+          estado: "pendiente",
+          latencia: "-",
+          actualizado: "-",
+          eventos: 0,
         },
         {
-          nombre: "NOAA Tsunami Alerts",
-          url: "https://tsunami.gov/rss.xml",
-          estado: "conectado",
-          latencia: "95ms",
-          actualizado: "18 sept, 20:47",
+          nombre: "NASA EONET",
+          url: "https://eonet.gsfc.nasa.gov/api/v3/events",
+          estado: "pendiente",
+          latencia: "-",
+          actualizado: "-",
+          eventos: 0,
         },
-        {
-          nombre: "USGS All Feeds",
-          url: "https://earthquake.usgs.gov/earthquakes/feed/",
-          estado: "conectado",
-          latencia: "84ms",
-          actualizado: "18 sept, 20:47",
-        },
-      ],
-    },
-    {
-      categoria: "Volcanes",
-      apis: [
-        {
-          nombre: "USGS Hawaiian Volcano Observatory",
-          url: "https://volcanoes.usgs.gov",
-          estado: "conectado",
-          latencia: "112ms",
-          actualizado: "18 sept, 20:47",
-        },
-        {
-          nombre: "Alaska Volcano Observatory",
-          url: "https://avo.alaska.edu",
-          estado: "conectado",
-          latencia: "156ms",
-          actualizado: "18 sept, 20:47",
-        },
-      ],
-    },
-    {
-      categoria: "Clima & Tormentas",
-      apis: [
-        {
-          nombre: "National Hurricane Center",
-          url: "https://www.nhc.noaa.gov/gtwo.xml",
-          estado: "conectado",
-          latencia: "67ms",
-          actualizado: "18 sept, 20:47",
-        },
-        {
-          nombre: "NOAA Weather Alerts",
-          url: "https://alerts.weather.gov",
-          estado: "conectado",
-          latencia: "78ms",
-          actualizado: "18 sept, 20:47",
-        },
-        {
-          nombre: "Storm Prediction Center",
-          url: "https://www.spc.noaa.gov/products/spcrss.xml",
-          estado: "conectado",
-          latencia: "89ms",
-          actualizado: "18 sept, 20:47",
-        },
-        {
-          nombre: "ECMWF Severe Weather",
-          url: "https://ecmwf.int",
-          estado: "conectado",
-          latencia: "198ms",
-          actualizado: "18 sept, 20:47",
-        },
-      ],
-    },
-    {
-      categoria: "Incendios",
-      apis: [
-        {
-          nombre: "NASA FIRMS Active Fires",
-          url: "https://firms.modaps.eosdis.nasa.gov/api/",
-          estado: "conectado",
-          latencia: "129ms",
-          actualizado: "18 sept, 20:47",
-        },
-        {
-          nombre: "InciWeb Incident System",
-          url: "https://inciweb.nwcg.gov",
-          estado: "conectado",
-          latencia: "134ms",
-          actualizado: "18 sept, 20:47",
-        },
-        {
-          nombre: "NASA VIIRS/MODIS",
-          url: "https://firms.modaps.eosdis.nasa.gov",
-          estado: "conectado",
-          latencia: "178ms",
-          actualizado: "18 sept, 20:47",
-        },
-      ],
-    },
-    {
-      categoria: "Emergencias Globales",
-      apis: [
         {
           nombre: "GDACS Global Alerts",
-          url: "https://www.gdacs.org/xml/rss.xml",
-          estado: "conectado",
-          latencia: "143ms",
-          actualizado: "18 sept, 20:47",
-        },
-        {
-          nombre: "ERCC Portal - EU Emergency",
-          url: "https://erccportal.jrc.ec.europa.eu/",
-          estado: "conectado",
-          latencia: "145ms",
-          actualizado: "18 sept, 20:47",
-        },
-        {
-          nombre: "ReliefWeb Updates",
-          url: "https://reliefweb.int/updates/rss",
-          estado: "conectado",
-          latencia: "167ms",
-          actualizado: "18 sept, 20:47",
-        },
-        {
-          nombre: "EM-DAT Database",
-          url: "https://www.emdat.be",
-          estado: "conectado",
-          latencia: "221ms",
-          actualizado: "18 sept, 20:47",
+          url: "https://www.gdacs.org/gdacsapi/api/events/geteventlist/MAP",
+          estado: "pendiente",
+          latencia: "-",
+          actualizado: "-",
+          eventos: 0,
         },
       ],
     },
@@ -326,7 +217,7 @@ const realtimeAPIs = {
   usgsEarthquakesHour:
     "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson",
   nasaEonetOpen:
-    "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=100",
+    "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=50",
   gdacsEvents:
     "https://www.gdacs.org/gdacsapi/api/events/geteventlist/MAP?eventlist=EQ;TC;FL;VO;DR;WF&alertlevel=Green;Orange;Red",
 };
@@ -399,6 +290,61 @@ function coordsToContinent(lat, lng) {
   return "global";
 }
 
+function formatApiTimestamp() {
+  const now = new Date();
+  return `${now.getDate()} sept, ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+async function fetchWithTimeout(url, ms = 20000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { signal: controller.signal, cache: "no-store" });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function syncApisFromLiveResults(usgs, eonet, gdacs, latencias = {}) {
+  const ts = formatApiTimestamp();
+  const filas = [
+    {
+      nombre: "USGS Earthquake Hazards",
+      url: realtimeAPIs.usgsEarthquakesDay,
+      ok: usgs.length > 0,
+      eventos: usgs.length,
+      latencia: latencias.usgs,
+    },
+    {
+      nombre: "NASA EONET",
+      url: realtimeAPIs.nasaEonetOpen,
+      ok: eonet.length > 0,
+      eventos: eonet.length,
+      latencia: latencias.eonet,
+    },
+    {
+      nombre: "GDACS Global Alerts",
+      url: "https://www.gdacs.org/gdacsapi/api/events/geteventlist/MAP",
+      ok: gdacs.length > 0,
+      eventos: gdacs.length,
+      latencia: latencias.gdacs,
+    },
+  ];
+  appData.apisCompletas = [
+    {
+      categoria: "Fuentes en tiempo real",
+      apis: filas.map((f) => ({
+        nombre: f.nombre,
+        url: f.url,
+        estado: f.ok ? "conectado" : "error",
+        latencia: f.latencia != null ? `${f.latencia}ms` : "-",
+        actualizado: ts,
+        eventos: f.eventos,
+      })),
+    },
+  ];
+}
+
 function eonetLatLng(geometry) {
   if (!Array.isArray(geometry) || geometry.length === 0) return null;
   const latest = geometry[geometry.length - 1];
@@ -418,14 +364,19 @@ function eonetLatLng(geometry) {
 }
 
 async function fetchEarthquakes() {
+  const t0 = performance.now();
   try {
-    const response = await fetch(realtimeAPIs.usgsEarthquakesDay);
+    const response = await fetchWithTimeout(
+      realtimeAPIs.usgsEarthquakesDay,
+      20000,
+    );
     if (!response.ok) throw new Error(`USGS HTTP ${response.status}`);
     const data = await response.json();
-    return (data.features || []).map((f) => {
+    const out = [];
+    (data.features || []).forEach((f) => {
       const props = f.properties || {};
       const coords = (f.geometry && f.geometry.coordinates) || [0, 0, 0];
-      return {
+      const eq = {
         id: `eq-${f.id}`,
         tipo: "🌍 Terremoto",
         titulo:
@@ -443,78 +394,110 @@ async function fetchEarthquakes() {
         icono: "🌍",
         magnitud: props.mag,
         profundidad: coords[2],
+        alertaTsunami: !!props.tsunami,
         leido: false,
         fechaLectura: null,
       };
+      out.push(eq);
+      if (props.tsunami) {
+        out.push({
+          ...eq,
+          id: `tsunami-${f.id}`,
+          tipo: "🌊 Tsunami",
+          titulo: `Alerta tsunami: ${eq.titulo}`,
+          categoria: "tsunami",
+          icono: "🌊",
+          nivel: "ALTO",
+          descripcion: `Alerta de tsunami asociada a terremoto M${props.mag}. ${props.place || ""}`,
+        });
+      }
     });
+    fetchEarthquakes._lastLatency = Math.round(performance.now() - t0);
+    return out;
   } catch (err) {
     console.error("❌ Error fetching USGS:", err);
+    fetchEarthquakes._lastLatency = null;
     return [];
   }
 }
 
 async function fetchEONET() {
-  try {
-    const response = await fetch(realtimeAPIs.nasaEonetOpen);
-    if (!response.ok) throw new Error(`EONET HTTP ${response.status}`);
-    const data = await response.json();
-    const events = data.events || [];
-    const out = [];
-    events.forEach((ev) => {
-      const cat = ev.categories && ev.categories[0] && ev.categories[0].id;
-      const mapping = EONET_CATEGORY_MAP[cat] || {
-        categoria: "storm",
-        icono: "⚠️",
-        tipo: "⚠️ Evento Natural",
-      };
-      const pos = eonetLatLng(ev.geometry || []);
-      if (!pos) return;
-      const latestDate =
-        ev.geometry && ev.geometry.length
-          ? new Date(ev.geometry[ev.geometry.length - 1].date).getTime()
-          : Date.now();
-      const source = (ev.sources && ev.sources[0]) || {};
-      out.push({
-        id: `eonet-${ev.id}`,
-        tipo: mapping.tipo,
-        titulo: ev.title,
-        ubicacion: ev.title.includes(",")
-          ? ev.title.split(",").slice(-2).join(",").trim()
-          : `${pos.lat.toFixed(2)}, ${pos.lng.toFixed(2)}`,
-        nivel: eonetSeverityLevel(ev),
-        descripcion:
-          ev.description ||
-          `${mapping.tipo} reportado por NASA EONET. Categoría: ${ev.categories[0].title}.`,
-        fecha: new Date(latestDate).toISOString(),
-        fechaDisplay: timeAgo(latestDate),
-        fuente: source.id || "NASA EONET",
-        enlace: source.url || ev.link || "https://eonet.gsfc.nasa.gov",
-        lat: pos.lat,
-        lng: pos.lng,
-        categoria: mapping.categoria,
-        icono: mapping.icono,
-        leido: false,
-        fechaLectura: null,
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const t0 = performance.now();
+    try {
+      const response = await fetchWithTimeout(
+        realtimeAPIs.nasaEonetOpen,
+        attempt === 0 ? 20000 : 35000,
+      );
+      if (!response.ok) throw new Error(`EONET HTTP ${response.status}`);
+      const data = await response.json();
+      const events = data.events || [];
+      const out = [];
+      events.forEach((ev) => {
+        const cat = ev.categories && ev.categories[0] && ev.categories[0].id;
+        const mapping = EONET_CATEGORY_MAP[cat] || {
+          categoria: "storm",
+          icono: "⚠️",
+          tipo: "⚠️ Evento Natural",
+        };
+        const pos = eonetLatLng(ev.geometry || []);
+        if (!pos) return;
+        const latestDate =
+          ev.geometry && ev.geometry.length
+            ? new Date(ev.geometry[ev.geometry.length - 1].date).getTime()
+            : Date.now();
+        const source = (ev.sources && ev.sources[0]) || {};
+        const catTitle =
+          ev.categories && ev.categories[0] && ev.categories[0].title;
+        out.push({
+          id: `eonet-${ev.id}`,
+          tipo: mapping.tipo,
+          titulo: ev.title,
+          ubicacion: ev.title.includes(",")
+            ? ev.title.split(",").slice(-2).join(",").trim()
+            : `${pos.lat.toFixed(2)}, ${pos.lng.toFixed(2)}`,
+          nivel: eonetSeverityLevel(ev),
+          descripcion:
+            ev.description ||
+            `${mapping.tipo} reportado por NASA EONET. Categoría: ${catTitle || cat}.`,
+          fecha: new Date(latestDate).toISOString(),
+          fechaDisplay: timeAgo(latestDate),
+          fuente: source.id || "NASA EONET",
+          enlace: source.url || ev.link || "https://eonet.gsfc.nasa.gov",
+          lat: pos.lat,
+          lng: pos.lng,
+          categoria: mapping.categoria,
+          icono: mapping.icono,
+          leido: false,
+          fechaLectura: null,
+        });
       });
-    });
-    return out;
-  } catch (err) {
-    console.error("❌ Error fetching NASA EONET:", err);
-    return [];
+      fetchEONET._lastLatency = Math.round(performance.now() - t0);
+      return out;
+    } catch (err) {
+      if (attempt === 1) {
+        console.error("❌ Error fetching NASA EONET:", err);
+        fetchEONET._lastLatency = null;
+        return [];
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
   }
+  return [];
 }
 
 async function fetchGDACS() {
+  const t0 = performance.now();
   try {
     const today = new Date();
-    const monthAgo = new Date(today.getTime() - 30 * 24 * 3600 * 1000);
+    const daysAgo = new Date(today.getTime() - 14 * 24 * 3600 * 1000);
     const fmt = (d) => d.toISOString().slice(0, 10);
-    const url = `${realtimeAPIs.gdacsEvents}&fromDate=${fmt(monthAgo)}&toDate=${fmt(today)}`;
-    const response = await fetch(url);
+    const url = `${realtimeAPIs.gdacsEvents}&fromDate=${fmt(daysAgo)}&toDate=${fmt(today)}`;
+    const response = await fetchWithTimeout(url, 25000);
     if (!response.ok) throw new Error(`GDACS HTTP ${response.status}`);
     const data = await response.json();
     const features = data.features || [];
-    return features
+    const mapped = features
       .map((f) => {
         const p = f.properties || {};
         const mapping = GDACS_TYPE_MAP[p.eventtype] || {
@@ -546,8 +529,11 @@ async function fetchGDACS() {
         };
       })
       .filter((ev) => ev.lat && ev.lng);
+    fetchGDACS._lastLatency = Math.round(performance.now() - t0);
+    return mapped;
   } catch (err) {
     console.error("❌ Error fetching GDACS:", err);
+    fetchGDACS._lastLatency = null;
     return [];
   }
 }
@@ -612,6 +598,13 @@ async function fetchAllRealtimeData() {
     fechaLectura: null,
   }));
 
+  syncApisFromLiveResults(earthquakes, eonet, gdacs, {
+    usgs: fetchEarthquakes._lastLatency,
+    eonet: fetchEONET._lastLatency,
+    gdacs: fetchGDACS._lastLatency,
+  });
+  renderApisPaginated();
+
   ultimaActualizacionLive = new Date();
   datosEnVivoActivos = true;
   actualizarEstadoConexion(
@@ -634,30 +627,6 @@ async function fetchAllRealtimeData() {
   }
 
   return true;
-}
-
-async function pingAPI(url) {
-  const start = performance.now();
-  try {
-    await fetch(url, { method: "HEAD", mode: "no-cors", cache: "no-store" });
-    return { ok: true, latencia: Math.round(performance.now() - start) };
-  } catch (err) {
-    return { ok: false, latencia: Math.round(performance.now() - start) };
-  }
-}
-
-async function checkApisReachability() {
-  const apis = [];
-  appData.apisCompletas.forEach((cat) =>
-    cat.apis.forEach((api) => apis.push(api)),
-  );
-  const checks = await Promise.all(apis.map((api) => pingAPI(api.url)));
-  apis.forEach((api, i) => {
-    api.estado = checks[i].ok ? "conectado" : "reachable";
-    api.latencia = `${checks[i].latencia}ms`;
-    const now = new Date();
-    api.actualizado = `${now.getDate()} sept, ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  });
 }
 
 // INICIALIZACIÓN
@@ -735,10 +704,6 @@ async function inicializarAplicacion() {
     console.error("❌ Error en carga inicial en vivo:", err);
   }
 
-  checkApisReachability()
-    .then(() => renderApisPaginated())
-    .catch((err) => console.error("❌ Error pings APIs:", err));
-
   console.log("✅ Sistema inicializado con datos en vivo");
 }
 
@@ -756,8 +721,6 @@ async function updateAll() {
 
   try {
     const ok = await ejecutarActualizacionEnVivo({ silent: false });
-    await checkApisReachability();
-    renderApisPaginated();
 
     if (ok && configuracion.sonidoActivado) {
       playNotificationSound("success");
@@ -959,6 +922,9 @@ function configurarLeyendaMapa() {
 
 function eventoCoincideFiltroMapa(evento, filtro) {
   if (filtro === "all") return true;
+  if (filtro === "tsunami") {
+    return evento.categoria === "tsunami" || evento.alertaTsunami === true;
+  }
   return evento.categoria === filtro;
 }
 
@@ -1332,22 +1298,32 @@ function renderApisPaginated() {
 
   apisAMostrar.forEach((api) => {
     const apiCard = document.createElement("div");
-    const online = api.estado === "conectado" || api.estado === "reachable";
-    apiCard.className = `api-card ${online ? "verified" : "offline"}`;
+    const online = api.estado === "conectado";
+    const pending = api.estado === "pendiente";
+    const statusLabel = pending
+      ? "Verificando..."
+      : online
+        ? "En línea"
+        : "Sin respuesta";
+    const dotClass = pending ? "pending" : online ? "online" : "offline";
+    apiCard.className = `api-card ${online ? "verified" : pending ? "" : "offline"}`;
+    const eventosLine =
+      api.eventos != null ? `<div class="api-events">${api.eventos} eventos cargados</div>` : "";
     apiCard.innerHTML = `
             <div class="api-header">
                 <div class="api-name">${api.nombre}</div>
                 <div class="api-status">
-                    <span class="status-dot ${online ? "online" : "offline"}"></span>
-                    <span>${online ? "En línea" : "Sin respuesta"}</span>
+                    <span class="status-dot ${dotClass}"></span>
+                    <span>${statusLabel}</span>
                 </div>
             </div>
             <div class="api-description">
                 <div class="api-latency">Latencia: ${api.latencia}</div>
+                ${eventosLine}
                 <div style="font-size: 11px; color: var(--color-text-secondary); margin-top: 4px;">${api.categoria}</div>
             </div>
             <div class="api-url">${api.url}</div>
-            <div class="api-timestamp">${api.actualizado} CEST</div>
+            <div class="api-timestamp">${api.actualizado}${api.actualizado !== "-" ? " CEST" : ""}</div>
         `;
     apisGrid.appendChild(apiCard);
   });
@@ -1493,18 +1469,26 @@ async function verificarTodasLasAPIs() {
   if (!btn) return;
 
   const textoOriginal = btn.textContent;
-  btn.textContent = "🔍 Verificando conexiones reales...";
+  btn.textContent = "🔍 Verificando fuentes en vivo...";
   btn.disabled = true;
 
   try {
-    await checkApisReachability();
-    renderApisPaginated();
+    const ok = await fetchAllRealtimeData();
+    updateStats();
+    renderEvents();
+    renderNewsPaginated();
+    loadEventsToMap();
     const total =
       appData.apisCompletas.reduce((n, c) => n + c.apis.length, 0) || 0;
-    showNotification(`✅ ${total} APIs verificadas (pings reales)`, "success");
+    showNotification(
+      ok
+        ? `✅ ${total} fuentes en vivo verificadas`
+        : "⚠️ Algunas fuentes no respondieron",
+      ok ? "success" : "warning",
+    );
   } catch (err) {
     console.error(err);
-    showNotification("❌ Error verificando APIs", "error");
+    showNotification("❌ Error verificando fuentes", "error");
   } finally {
     btn.textContent = textoOriginal;
     btn.disabled = false;

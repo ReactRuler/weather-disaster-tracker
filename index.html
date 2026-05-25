@@ -349,7 +349,7 @@
                         <span class="status status--info" id="api-timestamp">Verificando conexiones...</span>
                     </div>
                         <div class="api-actions">
-                            <button class="btn btn--secondary btn--sm" id="check-all-apis">🔍 Verificar Todas</button>
+                            <button class="btn btn--secondary btn--sm" id="check-all-apis">🔍 Verificar Fuentes</button>
                         </div>
                     </div>
                 </div>
@@ -389,6 +389,19 @@
         </audio>
     </div>
 
+    <script>
+    (function () {
+      var c = window.crypto || (window.crypto = {});
+      if (!c.randomUUID) {
+        c.randomUUID = function () {
+          return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, function (ch) {
+            var n = (Math.random() * 16) | 0;
+            return (ch === "x" ? n : (n & 3) | 8).toString(16);
+          });
+        };
+      }
+    })();
+    </script>
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="

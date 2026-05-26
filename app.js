@@ -1290,27 +1290,81 @@ async function fetchWithTimeout(url, ms = 12000) {
   }
 }
 
+const API_RETRY_ATTEMPTS = 5;
+const API_RETRY_DELAY_MS = 1200;
+const API_RETRY_MAX_ROUNDS = 4;
+
+async function fetchApiWithRetry(fetchFn, label, options = {}) {
+  const attempts = options.attempts ?? API_RETRY_ATTEMPTS;
+  const baseDelay = options.delayMs ?? API_RETRY_DELAY_MS;
+  let wait = baseDelay;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    fetchFn._ok = false;
+    try {
+      const data = await fetchFn();
+      if (fetchFn._ok) return data;
+    } catch (err) {
+      console.warn(
+        `⚠️ ${label} intento ${attempt}/${attempts}:`,
+        err.message || err,
+      );
+    }
+    if (attempt < attempts) {
+      await new Promise((r) => setTimeout(r, wait));
+      wait = Math.min(Math.round(wait * 1.5), 10000);
+    }
+  }
+  fetchFn._ok = false;
+  fetchFn._lastLatency = null;
+  return [];
+}
+
+async function ensureAllApisLoaded(bundle, opts = {}) {
+  const maxRounds = opts.maxRounds ?? API_RETRY_MAX_ROUNDS;
+  const state = { ...bundle };
+  const defs = [
+    { key: "earthquakes", fn: fetchEarthquakes, label: "USGS" },
+    { key: "eonet", fn: fetchEONET, label: "NASA EONET" },
+    { key: "gdacs", fn: fetchGDACS, label: "GDACS" },
+  ];
+  for (let round = 1; round <= maxRounds; round++) {
+    const failed = defs.filter((d) => d.fn._ok !== true);
+    if (!failed.length) break;
+    const names = failed.map((d) => d.label).join(", ");
+    actualizarEstadoConexion(
+      `🔄 Reintentando fuentes: ${names} (${round}/${maxRounds})...`,
+      "warning",
+    );
+    for (const d of failed) {
+      state[d.key] = await fetchApiWithRetry(d.fn, d.label, {
+        attempts: API_RETRY_ATTEMPTS,
+      });
+    }
+  }
+  return state;
+}
+
 function syncApisFromLiveResults(usgs, eonet, gdacs, latencias = {}) {
   const ts = formatApiTimestamp();
   const filas = [
     {
       nombre: "USGS Earthquake Hazards",
       url: realtimeAPIs.usgsEarthquakesDay,
-      ok: usgs.length > 0,
+      ok: fetchEarthquakes._ok === true,
       eventos: usgs.length,
       latencia: latencias.usgs,
     },
     {
       nombre: "NASA EONET",
       url: realtimeAPIs.nasaEonetOpen,
-      ok: eonet.length > 0,
+      ok: fetchEONET._ok === true,
       eventos: eonet.length,
       latencia: latencias.eonet,
     },
     {
       nombre: "GDACS Global Alerts",
       url: "https://www.gdacs.org/gdacsapi/api/events/geteventlist/MAP",
-      ok: gdacs.length > 0,
+      ok: fetchGDACS._ok === true,
       eventos: gdacs.length,
       latencia: latencias.gdacs,
     },
@@ -1397,12 +1451,13 @@ async function fetchEarthquakes() {
         });
       }
     });
+    fetchEarthquakes._ok = true;
     fetchEarthquakes._lastLatency = Math.round(performance.now() - t0);
     return out;
   } catch (err) {
-    console.error("❌ Error fetching USGS:", err);
+    fetchEarthquakes._ok = false;
     fetchEarthquakes._lastLatency = null;
-    return [];
+    throw err;
   }
 }
 
@@ -1453,12 +1508,13 @@ async function fetchEONET() {
         fechaLectura: null,
       });
     });
+    fetchEONET._ok = true;
     fetchEONET._lastLatency = Math.round(performance.now() - t0);
     return out;
   } catch (err) {
-    console.error("❌ Error fetching NASA EONET:", err);
+    fetchEONET._ok = false;
     fetchEONET._lastLatency = null;
-    return [];
+    throw err;
   }
 }
 
@@ -1505,12 +1561,13 @@ async function fetchGDACS() {
         };
       })
       .filter((ev) => ev.lat && ev.lng);
+    fetchGDACS._ok = true;
     fetchGDACS._lastLatency = Math.round(performance.now() - t0);
     return mapped;
   } catch (err) {
-    console.error("❌ Error fetching GDACS:", err);
+    fetchGDACS._ok = false;
     fetchGDACS._lastLatency = null;
-    return [];
+    throw err;
   }
 }
 
@@ -1651,7 +1708,7 @@ async function fetchAllRealtimeData(opts = {}) {
 
     if (staged) {
       actualizarEstadoConexion("🔄 Cargando terremotos (USGS)...", "warning");
-      earthquakes = await fetchEarthquakes();
+      earthquakes = await fetchApiWithRetry(fetchEarthquakes, "USGS");
       if (earthquakes.length) {
         procesarDatosEnVivo(earthquakes, [], [], { notificar: false });
         refrescarVistaDatos();
@@ -1659,23 +1716,31 @@ async function fetchAllRealtimeData(opts = {}) {
       }
 
       actualizarEstadoConexion("🔄 Cargando volcanes, tormentas y alertas...", "warning");
-      const rest = await Promise.allSettled([fetchEONET(), fetchGDACS()]);
-      eonet = rest[0].status === "fulfilled" ? rest[0].value : [];
-      gdacs = rest[1].status === "fulfilled" ? rest[1].value : [];
+      const rest = await Promise.all([
+        fetchApiWithRetry(fetchEONET, "NASA EONET"),
+        fetchApiWithRetry(fetchGDACS, "GDACS"),
+      ]);
+      eonet = rest[0];
+      gdacs = rest[1];
     } else {
       actualizarEstadoConexion(
         "🔄 Obteniendo datos en vivo desde USGS, NASA EONET y GDACS...",
         "warning",
       );
-      const results = await Promise.allSettled([
-        fetchEarthquakes(),
-        fetchEONET(),
-        fetchGDACS(),
+      const results = await Promise.all([
+        fetchApiWithRetry(fetchEarthquakes, "USGS"),
+        fetchApiWithRetry(fetchEONET, "NASA EONET"),
+        fetchApiWithRetry(fetchGDACS, "GDACS"),
       ]);
-      earthquakes = results[0].status === "fulfilled" ? results[0].value : [];
-      eonet = results[1].status === "fulfilled" ? results[1].value : [];
-      gdacs = results[2].status === "fulfilled" ? results[2].value : [];
+      earthquakes = results[0];
+      eonet = results[1];
+      gdacs = results[2];
     }
+
+    const loaded = await ensureAllApisLoaded({ earthquakes, eonet, gdacs });
+    earthquakes = loaded.earthquakes;
+    eonet = loaded.eonet;
+    gdacs = loaded.gdacs;
 
     const ok = procesarDatosEnVivo(earthquakes, eonet, gdacs, {
       notificar: opts.notificar !== false,

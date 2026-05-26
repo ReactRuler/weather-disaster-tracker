@@ -45,9 +45,6 @@
             <section class="realtime-dashboard">
                 <div class="section-header">
                     <h2>📊 Dashboard en Tiempo Real</h2>
-                    <div class="update-info">
-                        <span class="status status--info" id="last-update">Cargando datos en vivo...</span>
-                    </div>
                 </div>
                 
                 <div class="stats-grid">
@@ -107,63 +104,80 @@
                         </div>
                     </div>
                     <div class="map-legend">
-                        <h5>Leyenda por Tipos</h5>
+                        <div class="map-legend__head">
+                            <h5>Leyenda por Tipos</h5>
+                            <span class="legend-last-update status status--info" id="last-update">Cargando datos en vivo...</span>
+                        </div>
                         <div class="legend-items" id="map-legend-items">
                             <button type="button" class="legend-item active" data-filter="all">
                                 <span class="legend-marker">🌐</span>
-                                <span>Todos</span>
+                                <span class="legend-label">Todos</span>
+                                <span class="legend-count">0</span>
                             </button>
                             <button type="button" class="legend-item" data-filter="earthquake">
                                 <span class="legend-marker">🌍</span>
-                                <span>Terremotos</span>
+                                <span class="legend-label">Terremotos</span>
+                                <span class="legend-count">0</span>
                             </button>
                             <button type="button" class="legend-item" data-filter="tsunami">
                                 <span class="legend-marker">🌊</span>
-                                <span>Tsunamis</span>
+                                <span class="legend-label">Tsunamis</span>
+                                <span class="legend-count">0</span>
                             </button>
                             <button type="button" class="legend-item" data-filter="volcano">
                                 <span class="legend-marker">🌋</span>
-                                <span>Erupciones Volcánicas</span>
+                                <span class="legend-label">Erupciones Volcánicas</span>
+                                <span class="legend-count">0</span>
                             </button>
                             <button type="button" class="legend-item" data-filter="landslide">
                                 <span class="legend-marker">⛰️</span>
-                                <span>Deslizamientos</span>
+                                <span class="legend-label">Deslizamientos</span>
+                                <span class="legend-count">0</span>
                             </button>
                             <button type="button" class="legend-item" data-filter="hurricane">
                                 <span class="legend-marker">🌀</span>
-                                <span>Huracanes</span>
+                                <span class="legend-label">Huracanes</span>
+                                <span class="legend-count">0</span>
                             </button>
                             <button type="button" class="legend-item" data-filter="tornado">
                                 <span class="legend-marker">🌪️</span>
-                                <span>Tornados</span>
+                                <span class="legend-label">Tornados</span>
+                                <span class="legend-count">0</span>
                             </button>
                             <button type="button" class="legend-item" data-filter="storm">
                                 <span class="legend-marker">⛈️</span>
-                                <span>Tormentas</span>
+                                <span class="legend-label">Tormentas</span>
+                                <span class="legend-count">0</span>
                             </button>
                             <button type="button" class="legend-item" data-filter="flood">
                                 <span class="legend-marker">💧</span>
-                                <span>Inundaciones</span>
+                                <span class="legend-label">Inundaciones</span>
+                                <span class="legend-count">0</span>
                             </button>
                             <button type="button" class="legend-item" data-filter="drought">
                                 <span class="legend-marker">🏜️</span>
-                                <span>Sequías</span>
+                                <span class="legend-label">Sequías</span>
+                                <span class="legend-count">0</span>
                             </button>
                             <button type="button" class="legend-item" data-filter="heatwave">
                                 <span class="legend-marker">🔥</span>
-                                <span>Olas de Calor</span>
+                                <span class="legend-label">Olas de Calor</span>
+                                <span class="legend-count">0</span>
                             </button>
                             <button type="button" class="legend-item" data-filter="coldwave">
                                 <span class="legend-marker">❄️</span>
-                                <span>Olas de Frío</span>
+                                <span class="legend-label">Olas de Frío</span>
+                                <span class="legend-count">0</span>
                             </button>
                             <button type="button" class="legend-item" data-filter="snowstorm">
                                 <span class="legend-marker">🌨️</span>
-                                <span>Nevadas Extremas</span>
+                                <span class="legend-label">Nevadas Extremas</span>
+                                <span class="legend-count">0</span>
                             </button>
                             <button type="button" class="legend-item" data-filter="wildfire">
                                 <span class="legend-marker">🔥</span>
-                                <span>Incendios Forestales</span>
+                                <span class="legend-label">Incendios Forestales</span>
+                                <span class="legend-count">0</span>
                             </button>
                         </div>
                     </div>
@@ -176,14 +190,76 @@
                     <h2>🚨 Eventos Recientes Verificados</h2>
                     <div class="events-controls">
                         <button class="btn btn--secondary btn--sm" id="refresh-events">🔄 Actualizar</button>
-                        <div class="filter-controls">
+                        <button type="button" class="btn btn--outline btn--sm" id="toggle-events-filters" aria-expanded="false" aria-controls="events-filters-panel">
+                            🔍 Filtros avanzados
+                        </button>
+                        <span class="events-filter-badge" id="events-filter-badge" hidden></span>
+                    </div>
+                </div>
+
+                <div class="events-filters-panel hidden" id="events-filters-panel">
+                    <div class="events-filters-panel__head">
+                        <span id="events-filter-summary">Sin filtros activos</span>
+                        <button type="button" class="btn btn--outline btn--sm" id="clear-events-filters">Limpiar</button>
+                    </div>
+                    <div class="events-filters-grid">
+                        <div class="events-filter-group">
+                            <h4>Nivel de alerta</h4>
+                            <div class="events-filter-checks" id="filter-niveles">
+                                <label class="checkbox-item"><input type="checkbox" data-nivel="BAJO" checked><span>BAJO</span></label>
+                                <label class="checkbox-item"><input type="checkbox" data-nivel="MODERADO" checked><span>MODERADO</span></label>
+                                <label class="checkbox-item"><input type="checkbox" data-nivel="ALTO" checked><span>ALTO</span></label>
+                                <label class="checkbox-item"><input type="checkbox" data-nivel="CRITICO" checked><span>CRÍTICO</span></label>
+                            </div>
+                        </div>
+                        <div class="events-filter-group">
+                            <h4>Tipo de evento</h4>
                             <select class="form-control" id="event-type-filter">
                                 <option value="all">Todos los tipos</option>
-                                <option value="volcano">🌋 Volcanes</option>
                                 <option value="earthquake">🌍 Terremotos</option>
+                                <option value="tsunami">🌊 Tsunamis</option>
+                                <option value="volcano">🌋 Volcanes</option>
                                 <option value="wildfire">🔥 Incendios</option>
                                 <option value="storm">⛈️ Tormentas</option>
+                                <option value="hurricane">🌀 Huracanes</option>
+                                <option value="tornado">🌪️ Tornados</option>
+                                <option value="flood">💧 Inundaciones</option>
+                                <option value="drought">🏜️ Sequías</option>
+                                <option value="landslide">⛰️ Deslizamientos</option>
+                                <option value="heatwave">🔥 Olas de calor</option>
+                                <option value="coldwave">❄️ Olas de frío</option>
+                                <option value="snowstorm">🌨️ Nevadas</option>
                             </select>
+                            <div class="events-filter-checks events-filter-checks--wrap" id="filter-categorias"></div>
+                        </div>
+                        <div class="events-filter-group">
+                            <h4>Continente</h4>
+                            <div class="events-filter-checks events-filter-checks--wrap" id="filter-continentes">
+                                <label class="checkbox-item"><input type="checkbox" data-continente="europa" checked><span>Europa</span></label>
+                                <label class="checkbox-item"><input type="checkbox" data-continente="asia" checked><span>Asia</span></label>
+                                <label class="checkbox-item"><input type="checkbox" data-continente="america" checked><span>América</span></label>
+                                <label class="checkbox-item"><input type="checkbox" data-continente="africa" checked><span>África</span></label>
+                                <label class="checkbox-item"><input type="checkbox" data-continente="oceania" checked><span>Oceanía</span></label>
+                                <label class="checkbox-item"><input type="checkbox" data-continente="global" checked><span>Global</span></label>
+                            </div>
+                        </div>
+                        <div class="events-filter-group">
+                            <h4>Ubicación y país</h4>
+                            <label class="form-label">Buscar en ubicación</label>
+                            <input type="text" class="form-control" id="filter-ubicacion" placeholder="Ej: California, Indonesia..." list="filter-ubicacion-list">
+                            <datalist id="filter-ubicacion-list"></datalist>
+                            <label class="form-label">País / región</label>
+                            <input type="text" class="form-control" id="filter-pais" placeholder="Ej: España, USA..." list="filter-pais-list">
+                            <datalist id="filter-pais-list"></datalist>
+                        </div>
+                        <div class="events-filter-group">
+                            <h4>Fuente y texto</h4>
+                            <label class="form-label">Fuente de datos</label>
+                            <select class="form-control" id="filter-fuente">
+                                <option value="all">Todas las fuentes</option>
+                            </select>
+                            <label class="form-label">Buscar en título o descripción</label>
+                            <input type="text" class="form-control" id="filter-busqueda" placeholder="Palabra clave...">
                         </div>
                     </div>
                 </div>
@@ -198,16 +274,95 @@
                 <div class="section-header">
                     <h2 id="news-title">📰 Noticias Verificadas</h2>
                     <div class="news-controls">
-                        <select class="form-control" id="continent-filter">
-                            <option value="all">Todos los continentes</option>
-                            <option value="europa">Europa</option>
-                            <option value="asia">Asia</option>
-                            <option value="america">América</option>
-                            <option value="africa">África</option>
-                            <option value="oceania">Oceanía</option>
-                        </select>
                         <button class="btn btn--outline btn--sm" id="refresh-news">🔄 Actualizar Noticias</button>
+                        <button type="button" class="btn btn--outline btn--sm" id="toggle-news-filters" aria-expanded="false" aria-controls="news-filters-panel">
+                            🔍 Filtros avanzados
+                        </button>
+                        <span class="events-filter-badge" id="news-filter-badge" hidden></span>
                     </div>
+                </div>
+
+                <div class="events-filters-panel hidden" id="news-filters-panel">
+                    <div class="events-filters-panel__head">
+                        <span id="news-filter-summary">Sin filtros activos</span>
+                        <button type="button" class="btn btn--outline btn--sm" id="clear-news-filters">Limpiar</button>
+                    </div>
+                    <div class="events-filters-grid">
+                        <div class="events-filter-group">
+                            <h4>Nivel de alerta</h4>
+                            <div class="events-filter-checks" id="filter-news-niveles">
+                                <label class="checkbox-item"><input type="checkbox" data-nivel="BAJO" checked><span>BAJO</span></label>
+                                <label class="checkbox-item"><input type="checkbox" data-nivel="MODERADO" checked><span>MODERADO</span></label>
+                                <label class="checkbox-item"><input type="checkbox" data-nivel="ALTO" checked><span>ALTO</span></label>
+                                <label class="checkbox-item"><input type="checkbox" data-nivel="CRITICO" checked><span>CRÍTICO</span></label>
+                            </div>
+                        </div>
+                        <div class="events-filter-group">
+                            <h4>Tipo de noticia</h4>
+                            <select class="form-control" id="news-type-filter">
+                                <option value="all">Todos los tipos</option>
+                                <option value="earthquake">🌍 Terremotos</option>
+                                <option value="tsunami">🌊 Tsunamis</option>
+                                <option value="volcano">🌋 Volcanes</option>
+                                <option value="wildfire">🔥 Incendios</option>
+                                <option value="storm">⛈️ Tormentas</option>
+                                <option value="hurricane">🌀 Huracanes</option>
+                                <option value="tornado">🌪️ Tornados</option>
+                                <option value="flood">💧 Inundaciones</option>
+                                <option value="drought">🏜️ Sequías</option>
+                                <option value="landslide">⛰️ Deslizamientos</option>
+                                <option value="heatwave">🔥 Olas de calor</option>
+                                <option value="coldwave">❄️ Olas de frío</option>
+                                <option value="snowstorm">🌨️ Nevadas</option>
+                            </select>
+                            <div class="events-filter-checks events-filter-checks--wrap" id="filter-news-categorias"></div>
+                        </div>
+                        <div class="events-filter-group">
+                            <h4>Continente</h4>
+                            <div class="events-filter-checks events-filter-checks--wrap" id="filter-news-continentes">
+                                <label class="checkbox-item"><input type="checkbox" data-continente="europa" checked><span>Europa</span></label>
+                                <label class="checkbox-item"><input type="checkbox" data-continente="asia" checked><span>Asia</span></label>
+                                <label class="checkbox-item"><input type="checkbox" data-continente="america" checked><span>América</span></label>
+                                <label class="checkbox-item"><input type="checkbox" data-continente="africa" checked><span>África</span></label>
+                                <label class="checkbox-item"><input type="checkbox" data-continente="oceania" checked><span>Oceanía</span></label>
+                                <label class="checkbox-item"><input type="checkbox" data-continente="global" checked><span>Global</span></label>
+                            </div>
+                        </div>
+                        <div class="events-filter-group">
+                            <h4>Ubicación y país</h4>
+                            <label class="form-label">Buscar en ubicación</label>
+                            <input type="text" class="form-control" id="filter-news-ubicacion" placeholder="Ej: California, Indonesia..." list="filter-news-ubicacion-list">
+                            <datalist id="filter-news-ubicacion-list"></datalist>
+                            <label class="form-label">País / región</label>
+                            <input type="text" class="form-control" id="filter-news-pais" placeholder="Ej: España, USA..." list="filter-news-pais-list">
+                            <datalist id="filter-news-pais-list"></datalist>
+                        </div>
+                        <div class="events-filter-group">
+                            <h4>Estado y fuente</h4>
+                            <label class="form-label">Lectura</label>
+                            <select class="form-control" id="filter-news-leido">
+                                <option value="all">Todas las noticias</option>
+                                <option value="unread">Solo no leídas</option>
+                                <option value="read">Solo leídas</option>
+                            </select>
+                            <label class="form-label">Fuente de datos</label>
+                            <select class="form-control" id="filter-news-fuente">
+                                <option value="all">Todas las fuentes</option>
+                            </select>
+                            <label class="form-label">Buscar en título o descripción</label>
+                            <input type="text" class="form-control" id="filter-news-busqueda" placeholder="Palabra clave...">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="news-quick-filters" id="news-quick-filters">
+                    <button type="button" class="news-qf-btn active" data-news-qf="all"><span>Todos</span><span class="legend-count">0</span></button>
+                    <button type="button" class="news-qf-btn" data-news-qf="europa"><span>Europa</span><span class="legend-count">0</span></button>
+                    <button type="button" class="news-qf-btn" data-news-qf="asia"><span>Asia</span><span class="legend-count">0</span></button>
+                    <button type="button" class="news-qf-btn" data-news-qf="america"><span>América</span><span class="legend-count">0</span></button>
+                    <button type="button" class="news-qf-btn" data-news-qf="africa"><span>África</span><span class="legend-count">0</span></button>
+                    <button type="button" class="news-qf-btn" data-news-qf="oceania"><span>Oceanía</span><span class="legend-count">0</span></button>
+                    <button type="button" class="news-qf-btn" data-news-qf="global"><span>Global</span><span class="legend-count">0</span></button>
                 </div>
                 
                 <div class="news-grid" id="news-grid">

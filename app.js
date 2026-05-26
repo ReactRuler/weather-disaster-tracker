@@ -205,7 +205,34 @@ let configuracion = {
     noticias: "all",
     mapa: "all",
   },
+  filtrosEventos: null,
+  filtrosNoticias: null,
 };
+
+const EVENTO_NIVELES = ["BAJO", "MODERADO", "ALTO", "CRITICO"];
+const EVENTO_CATEGORIAS_FILTRO = [
+  { id: "earthquake", label: "Terremotos" },
+  { id: "tsunami", label: "Tsunamis" },
+  { id: "volcano", label: "Volcanes" },
+  { id: "wildfire", label: "Incendios" },
+  { id: "storm", label: "Tormentas" },
+  { id: "hurricane", label: "Huracanes" },
+  { id: "tornado", label: "Tornados" },
+  { id: "flood", label: "Inundaciones" },
+  { id: "drought", label: "Sequías" },
+  { id: "landslide", label: "Deslizamientos" },
+  { id: "heatwave", label: "Olas de calor" },
+  { id: "coldwave", label: "Olas de frío" },
+  { id: "snowstorm", label: "Nevadas" },
+];
+const EVENTO_CONTINENTES_FILTRO = [
+  "europa",
+  "asia",
+  "america",
+  "africa",
+  "oceania",
+  "global",
+];
 
 let mapaLeaflet = null;
 let mapaFullscreen = null;
@@ -329,6 +356,8 @@ function leerPreferencias() {
     configuracion.filtros = { eventos: "all", noticias: "all", mapa: "all" };
   }
   configuracion.filtros.mapa = mapFiltroActivo;
+  ensureFiltrosEventos();
+  ensureFiltrosNoticias();
 }
 
 function recogerPreferenciasDesdeUI() {
@@ -336,18 +365,15 @@ function recogerPreferenciasDesdeUI() {
   const radSlider = document.getElementById("radius-slider");
   const freqSel = document.getElementById("update-frequency");
   const alertSel = document.getElementById("alert-level");
-  const eventFilter = document.getElementById("event-type-filter");
-  const continentFilter = document.getElementById("continent-filter");
-
   if (locInput) configuracion.ubicacion = locInput.value.trim();
   if (radSlider) configuracion.radio = Number(radSlider.value) || 500;
   if (freqSel)
     configuracion.frecuenciaActualizacion = Number(freqSel.value) || 10;
   if (alertSel) configuracion.nivelMinimo = alertSel.value;
-  if (eventFilter) configuracion.filtros.eventos = eventFilter.value;
-  if (continentFilter) configuracion.filtros.noticias = continentFilter.value;
   configuracion.filtros.mapa = mapFiltroActivo;
   configuracion.tema = temaActual;
+  recogerFiltrosEventosDesdeUI();
+  recogerFiltrosNoticiasDesdeUI();
 
   document
     .querySelectorAll('.disaster-types input[type="checkbox"]')
@@ -447,15 +473,8 @@ function aplicarPreferenciasUI() {
     if (el) el.checked = !!v;
   });
 
-  const eventFilter = document.getElementById("event-type-filter");
-  if (eventFilter && configuracion.filtros?.eventos) {
-    eventFilter.value = configuracion.filtros.eventos;
-  }
-
-  const continentFilter = document.getElementById("continent-filter");
-  if (continentFilter && configuracion.filtros?.noticias) {
-    continentFilter.value = configuracion.filtros.noticias;
-  }
+  aplicarFiltrosEventosUI();
+  aplicarFiltrosNoticiasUI();
 
   mapFiltroActivo = configuracion.filtros?.mapa || "all";
   actualizarLeyendaActiva(mapFiltroActivo);
@@ -465,6 +484,716 @@ function aplicarPreferenciasUI() {
 function aplicarFiltrosPersistidos() {
   filtrarEventos(true);
   filtrarNoticias(true);
+}
+
+function getDefaultFiltrosEventos() {
+  const niveles = {};
+  EVENTO_NIVELES.forEach((n) => {
+    niveles[n] = true;
+  });
+  const categorias = {};
+  EVENTO_CATEGORIAS_FILTRO.forEach((c) => {
+    categorias[c.id] = true;
+  });
+  const continentes = {};
+  EVENTO_CONTINENTES_FILTRO.forEach((c) => {
+    continentes[c] = true;
+  });
+  return {
+    expandido: false,
+    niveles,
+    categorias,
+    continentes,
+    fuente: "all",
+    pais: "",
+    ubicacion: "",
+    busqueda: "",
+    categoria: "all",
+  };
+}
+
+function normalizarFiltrosEventos(raw) {
+  const base = getDefaultFiltrosEventos();
+  if (!raw || typeof raw !== "object") return base;
+  const out = { ...base, ...raw };
+  out.niveles = { ...base.niveles, ...(raw.niveles || {}) };
+  out.categorias = { ...base.categorias, ...(raw.categorias || {}) };
+  out.continentes = { ...base.continentes, ...(raw.continentes || {}) };
+  return out;
+}
+
+function ensureFiltrosEventos() {
+  if (!configuracion.filtrosEventos) {
+    configuracion.filtrosEventos = getDefaultFiltrosEventos();
+    if (
+      configuracion.filtros?.eventos &&
+      configuracion.filtros.eventos !== "all"
+    ) {
+      configuracion.filtrosEventos.categoria = configuracion.filtros.eventos;
+    }
+  } else {
+    configuracion.filtrosEventos = normalizarFiltrosEventos(
+      configuracion.filtrosEventos,
+    );
+  }
+  return configuracion.filtrosEventos;
+}
+
+function normalizeFilterText(s) {
+  return (s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function extractPaisFromUbicacion(ubicacion) {
+  if (!ubicacion) return "Internacional";
+  const parts = ubicacion.split(",").map((p) => p.trim()).filter(Boolean);
+  if (!parts.length) return "Internacional";
+  return parts[parts.length - 1];
+}
+
+function enrichEvento(ev) {
+  if (!ev) return ev;
+  if (!ev.continente) {
+    ev.continente = coordsToContinent(ev.lat, ev.lng);
+  }
+  if (!ev.pais) {
+    ev.pais = extractPaisFromUbicacion(ev.ubicacion);
+  }
+  return ev;
+}
+
+const NIVEL_POR_CATEGORIA = {
+  volcano: "ALTO",
+  earthquake: "MODERADO",
+  tsunami: "ALTO",
+  wildfire: "MODERADO",
+  storm: "MODERADO",
+  hurricane: "ALTO",
+  tornado: "ALTO",
+  flood: "MODERADO",
+  drought: "BAJO",
+  landslide: "MODERADO",
+  heatwave: "MODERADO",
+  coldwave: "BAJO",
+  snowstorm: "BAJO",
+};
+
+function enrichNoticia(n) {
+  if (!n) return n;
+  n.categoria = n.categoria || n.tipo || "";
+  if (!n.nivel) n.nivel = NIVEL_POR_CATEGORIA[n.categoria] || "BAJO";
+  if (!n.ubicacion) n.ubicacion = n.titulo || "";
+  if (!n.pais) n.pais = extractPaisFromUbicacion(n.ubicacion || n.titulo);
+  if (!n.continente) n.continente = "global";
+  return n;
+}
+
+function recogerFiltrosEventosDesdeUI() {
+  const f = ensureFiltrosEventos();
+  document
+    .querySelectorAll("#filter-niveles input[data-nivel]")
+    .forEach((cb) => {
+      f.niveles[cb.dataset.nivel] = cb.checked;
+    });
+  document
+    .querySelectorAll("#filter-categorias input[data-categoria]")
+    .forEach((cb) => {
+      f.categorias[cb.dataset.categoria] = cb.checked;
+    });
+  document
+    .querySelectorAll("#filter-continentes input[data-continente]")
+    .forEach((cb) => {
+      f.continentes[cb.dataset.continente] = cb.checked;
+    });
+  const tipoSel = document.getElementById("event-type-filter");
+  f.categoria = tipoSel ? tipoSel.value : "all";
+  const fuenteSel = document.getElementById("filter-fuente");
+  f.fuente = fuenteSel ? fuenteSel.value : "all";
+  const paisIn = document.getElementById("filter-pais");
+  f.pais = paisIn ? paisIn.value.trim() : "";
+  const ubicIn = document.getElementById("filter-ubicacion");
+  f.ubicacion = ubicIn ? ubicIn.value.trim() : "";
+  const busqIn = document.getElementById("filter-busqueda");
+  f.busqueda = busqIn ? busqIn.value.trim() : "";
+  const panel = document.getElementById("events-filters-panel");
+  const toggle = document.getElementById("toggle-events-filters");
+  f.expandido =
+    panel && toggle
+      ? !panel.classList.contains("hidden") && toggle.getAttribute("aria-expanded") === "true"
+      : !!f.expandido;
+  configuracion.filtros.eventos = f.categoria;
+  return f;
+}
+
+function aplicarFiltrosEventosUI() {
+  buildCategoriaFilterCheckboxes();
+  const f = ensureFiltrosEventos();
+  document
+    .querySelectorAll("#filter-niveles input[data-nivel]")
+    .forEach((cb) => {
+      const key = cb.dataset.nivel;
+      cb.checked = f.niveles[key] !== false;
+    });
+  document
+    .querySelectorAll("#filter-categorias input[data-categoria]")
+    .forEach((cb) => {
+      const key = cb.dataset.categoria;
+      cb.checked = f.categorias[key] !== false;
+    });
+  document
+    .querySelectorAll("#filter-continentes input[data-continente]")
+    .forEach((cb) => {
+      const key = cb.dataset.continente;
+      cb.checked = f.continentes[key] !== false;
+    });
+  const tipoSel = document.getElementById("event-type-filter");
+  if (tipoSel) tipoSel.value = f.categoria || "all";
+  const fuenteSel = document.getElementById("filter-fuente");
+  if (fuenteSel && f.fuente) fuenteSel.value = f.fuente;
+  const paisIn = document.getElementById("filter-pais");
+  if (paisIn) paisIn.value = f.pais || "";
+  const ubicIn = document.getElementById("filter-ubicacion");
+  if (ubicIn) ubicIn.value = f.ubicacion || "";
+  const busqIn = document.getElementById("filter-busqueda");
+  if (busqIn) busqIn.value = f.busqueda || "";
+  const panel = document.getElementById("events-filters-panel");
+  const toggle = document.getElementById("toggle-events-filters");
+  if (panel && toggle) {
+    const open = !!f.expandido;
+    panel.classList.toggle("hidden", !open);
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    toggle.textContent = open ? "🔍 Ocultar filtros" : "🔍 Filtros avanzados";
+  }
+}
+
+function contarFiltrosEventosActivos(f) {
+  let n = 0;
+  EVENTO_NIVELES.forEach((nv) => {
+    if (f.niveles[nv] === false) n++;
+  });
+  EVENTO_CATEGORIAS_FILTRO.forEach((c) => {
+    if (f.categorias[c.id] === false) n++;
+  });
+  EVENTO_CONTINENTES_FILTRO.forEach((c) => {
+    if (f.continentes[c] === false) n++;
+  });
+  if (f.categoria && f.categoria !== "all") n++;
+  if (f.fuente && f.fuente !== "all") n++;
+  if (f.pais) n++;
+  if (f.ubicacion) n++;
+  if (f.busqueda) n++;
+  return n;
+}
+
+function actualizarResumenFiltrosEventos(mostrados, total, f) {
+  const summary = document.getElementById("events-filter-summary");
+  const badge = document.getElementById("events-filter-badge");
+  const activos = contarFiltrosEventosActivos(f);
+  if (summary) {
+    summary.textContent =
+      activos > 0
+        ? `${mostrados} de ${total} eventos · ${activos} filtro(s) activo(s)`
+        : `${mostrados} de ${total} eventos`;
+  }
+  if (badge) {
+    if (activos > 0) {
+      badge.hidden = false;
+      badge.textContent = String(activos);
+    } else {
+      badge.hidden = true;
+    }
+  }
+}
+
+function eventoPasaFiltrosAvanzados(ev, f) {
+  if (!ev) return false;
+  const nivel = ev.nivel || "BAJO";
+  if (f.niveles[nivel] === false) return false;
+
+  if (f.categoria && f.categoria !== "all" && ev.categoria !== f.categoria) {
+    return false;
+  }
+  if (f.categorias[ev.categoria] === false) return false;
+
+  const cont = ev.continente || "global";
+  if (f.continentes[cont] === false) return false;
+
+  if (f.fuente && f.fuente !== "all" && ev.fuente !== f.fuente) return false;
+
+  const paisQ = normalizeFilterText(f.pais);
+  if (paisQ) {
+    const hay =
+      normalizeFilterText(ev.pais).includes(paisQ) ||
+      normalizeFilterText(ev.ubicacion).includes(paisQ);
+    if (!hay) return false;
+  }
+
+  const ubicQ = normalizeFilterText(f.ubicacion);
+  if (ubicQ && !normalizeFilterText(ev.ubicacion).includes(ubicQ)) return false;
+
+  const busqQ = normalizeFilterText(f.busqueda);
+  if (busqQ) {
+    const blob = normalizeFilterText(
+      `${ev.titulo} ${ev.descripcion} ${ev.ubicacion} ${ev.fuente} ${ev.tipo}`,
+    );
+    if (!blob.includes(busqQ)) return false;
+  }
+
+  return true;
+}
+
+function buildCategoriaFilterCheckboxes() {
+  const wrap = document.getElementById("filter-categorias");
+  if (!wrap || wrap.dataset.built === "1") return;
+  const f = ensureFiltrosEventos();
+  wrap.innerHTML = EVENTO_CATEGORIAS_FILTRO.map(
+    (c) =>
+      `<label class="checkbox-item"><input type="checkbox" data-categoria="${c.id}" ${f.categorias[c.id] !== false ? "checked" : ""}><span>${c.label}</span></label>`,
+  ).join("");
+  wrap.dataset.built = "1";
+}
+
+function actualizarOpcionesFiltrosEventos() {
+  buildCategoriaFilterCheckboxes();
+  const f = ensureFiltrosEventos();
+  const fuentes = [
+    ...new Set(
+      (appData.eventosRealesHoy || []).map((e) => e.fuente).filter(Boolean),
+    ),
+  ].sort();
+  const paises = [
+    ...new Set(
+      (appData.eventosRealesHoy || [])
+        .map((e) => e.pais || extractPaisFromUbicacion(e.ubicacion))
+        .filter(Boolean),
+    ),
+  ].sort();
+  const ubicaciones = [
+    ...new Set(
+      (appData.eventosRealesHoy || []).map((e) => e.ubicacion).filter(Boolean),
+    ),
+  ].sort();
+
+  const fuenteSel = document.getElementById("filter-fuente");
+  if (fuenteSel) {
+    const prev = f.fuente || "all";
+    fuenteSel.innerHTML =
+      '<option value="all">Todas las fuentes</option>' +
+      fuentes
+        .map(
+          (src) =>
+            `<option value="${src.replace(/"/g, "&quot;")}">${src}</option>`,
+        )
+        .join("");
+    fuenteSel.value = [...fuenteSel.options].some((o) => o.value === prev)
+      ? prev
+      : "all";
+  }
+
+  const paisList = document.getElementById("filter-pais-list");
+  if (paisList) {
+    paisList.innerHTML = paises
+      .map((p) => `<option value="${p.replace(/"/g, "&quot;")}">`)
+      .join("");
+  }
+  const ubicList = document.getElementById("filter-ubicacion-list");
+  if (ubicList) {
+    ubicList.innerHTML = ubicaciones
+      .slice(0, 80)
+      .map((u) => `<option value="${u.replace(/"/g, "&quot;")}">`)
+      .join("");
+  }
+}
+
+function togglePanelFiltrosEventos() {
+  const panel = document.getElementById("events-filters-panel");
+  const toggle = document.getElementById("toggle-events-filters");
+  if (!panel || !toggle) return;
+  const open = panel.classList.contains("hidden");
+  panel.classList.toggle("hidden", !open);
+  toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  toggle.textContent = open ? "🔍 Ocultar filtros" : "🔍 Filtros avanzados";
+  ensureFiltrosEventos().expandido = open;
+  guardarPreferencias();
+}
+
+function limpiarFiltrosEventos() {
+  configuracion.filtrosEventos = getDefaultFiltrosEventos();
+  configuracion.filtros.eventos = "all";
+  aplicarFiltrosEventosUI();
+  filtrarEventos();
+  guardarPreferencias();
+  showNotification("🧹 Filtros de eventos restablecidos", "info");
+}
+
+function setupEventosFiltrosAvanzados() {
+  buildCategoriaFilterCheckboxes();
+  const toggle = document.getElementById("toggle-events-filters");
+  const clearBtn = document.getElementById("clear-events-filters");
+  const panel = document.getElementById("events-filters-panel");
+  if (toggle) toggle.addEventListener("click", togglePanelFiltrosEventos);
+  if (clearBtn) clearBtn.addEventListener("click", limpiarFiltrosEventos);
+
+  const onFilterChange = () => {
+    filtrarEventos();
+    guardarPreferencias();
+  };
+  const onFilterDebounced = () => guardarPreferenciasDebounced(400);
+
+  if (panel) {
+    panel.addEventListener("change", (e) => {
+      const t = e.target;
+      if (
+        t.matches(
+          "#filter-niveles input, #filter-categorias input, #filter-continentes input, #event-type-filter, #filter-fuente",
+        )
+      ) {
+        onFilterChange();
+      }
+    });
+  }
+
+  ["filter-pais", "filter-ubicacion", "filter-busqueda"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener("input", () => {
+        filtrarEventos(true);
+        onFilterDebounced();
+      });
+    }
+  });
+}
+
+function getDefaultFiltrosNoticias() {
+  return {
+    ...getDefaultFiltrosEventos(),
+    leido: "all",
+    continenteRapido: "all",
+  };
+}
+
+function normalizarFiltrosNoticias(raw) {
+  const base = getDefaultFiltrosNoticias();
+  if (!raw || typeof raw !== "object") return base;
+  const out = normalizarFiltrosEventos(raw);
+  out.leido = raw.leido || "all";
+  out.continenteRapido = raw.continenteRapido || "all";
+  return out;
+}
+
+function ensureFiltrosNoticias() {
+  if (!configuracion.filtrosNoticias) {
+    configuracion.filtrosNoticias = getDefaultFiltrosNoticias();
+    if (
+      configuracion.filtros?.noticias &&
+      configuracion.filtros.noticias !== "all"
+    ) {
+      configuracion.filtrosNoticias.categoria = configuracion.filtros.noticias;
+    }
+  } else {
+    configuracion.filtrosNoticias = normalizarFiltrosNoticias(
+      configuracion.filtrosNoticias,
+    );
+  }
+  return configuracion.filtrosNoticias;
+}
+
+function noticiaComoEventoFiltro(n) {
+  if (!n) return null;
+  return {
+    nivel: n.nivel || "BAJO",
+    categoria: n.categoria || n.tipo || "",
+    continente: n.continente || "global",
+    fuente: n.fuente || "",
+    pais: n.pais || "",
+    ubicacion: n.ubicacion || n.titulo || "",
+    titulo: n.titulo || "",
+    descripcion: n.textoCompleto || "",
+    tipo: n.tipo || "",
+  };
+}
+
+function noticiaPasaFiltrosAvanzados(n, f) {
+  if (!n) return false;
+  enrichNoticia(n);
+  if (f.leido === "read" && !n.leido) return false;
+  if (f.leido === "unread" && n.leido) return false;
+  if (
+    f.continenteRapido &&
+    f.continenteRapido !== "all" &&
+    (n.continente || "global") !== f.continenteRapido
+  ) {
+    return false;
+  }
+  return eventoPasaFiltrosAvanzados(noticiaComoEventoFiltro(n), f);
+}
+
+function recogerFiltrosNoticiasDesdeUI() {
+  const f = ensureFiltrosNoticias();
+  document
+    .querySelectorAll("#filter-news-niveles input[data-nivel]")
+    .forEach((cb) => {
+      f.niveles[cb.dataset.nivel] = cb.checked;
+    });
+  document
+    .querySelectorAll("#filter-news-categorias input[data-categoria]")
+    .forEach((cb) => {
+      f.categorias[cb.dataset.categoria] = cb.checked;
+    });
+  document
+    .querySelectorAll("#filter-news-continentes input[data-continente]")
+    .forEach((cb) => {
+      f.continentes[cb.dataset.continente] = cb.checked;
+    });
+  const tipoSel = document.getElementById("news-type-filter");
+  f.categoria = tipoSel ? tipoSel.value : "all";
+  const fuenteSel = document.getElementById("filter-news-fuente");
+  f.fuente = fuenteSel ? fuenteSel.value : "all";
+  const paisIn = document.getElementById("filter-news-pais");
+  f.pais = paisIn ? paisIn.value.trim() : "";
+  const ubicIn = document.getElementById("filter-news-ubicacion");
+  f.ubicacion = ubicIn ? ubicIn.value.trim() : "";
+  const busqIn = document.getElementById("filter-news-busqueda");
+  f.busqueda = busqIn ? busqIn.value.trim() : "";
+  const leidoSel = document.getElementById("filter-news-leido");
+  f.leido = leidoSel ? leidoSel.value : "all";
+  const activeQf = document.querySelector(".news-qf-btn.active[data-news-qf]");
+  f.continenteRapido = activeQf
+    ? activeQf.dataset.newsQf
+    : f.continenteRapido || "all";
+  const panel = document.getElementById("news-filters-panel");
+  const toggle = document.getElementById("toggle-news-filters");
+  f.expandido =
+    panel && toggle
+      ? !panel.classList.contains("hidden") &&
+        toggle.getAttribute("aria-expanded") === "true"
+      : !!f.expandido;
+  configuracion.filtros.noticias = f.categoria;
+  return f;
+}
+
+function aplicarFiltrosNoticiasUI() {
+  buildCategoriaFilterCheckboxesNews();
+  const f = ensureFiltrosNoticias();
+  document
+    .querySelectorAll("#filter-news-niveles input[data-nivel]")
+    .forEach((cb) => {
+      cb.checked = f.niveles[cb.dataset.nivel] !== false;
+    });
+  document
+    .querySelectorAll("#filter-news-categorias input[data-categoria]")
+    .forEach((cb) => {
+      cb.checked = f.categorias[cb.dataset.categoria] !== false;
+    });
+  document
+    .querySelectorAll("#filter-news-continentes input[data-continente]")
+    .forEach((cb) => {
+      cb.checked = f.continentes[cb.dataset.continente] !== false;
+    });
+  const tipoSel = document.getElementById("news-type-filter");
+  if (tipoSel) tipoSel.value = f.categoria || "all";
+  const fuenteSel = document.getElementById("filter-news-fuente");
+  if (fuenteSel && f.fuente) fuenteSel.value = f.fuente;
+  const paisIn = document.getElementById("filter-news-pais");
+  if (paisIn) paisIn.value = f.pais || "";
+  const ubicIn = document.getElementById("filter-news-ubicacion");
+  if (ubicIn) ubicIn.value = f.ubicacion || "";
+  const busqIn = document.getElementById("filter-news-busqueda");
+  if (busqIn) busqIn.value = f.busqueda || "";
+  const leidoSel = document.getElementById("filter-news-leido");
+  if (leidoSel) leidoSel.value = f.leido || "all";
+  document.querySelectorAll(".news-qf-btn[data-news-qf]").forEach((btn) => {
+    btn.classList.toggle(
+      "active",
+      btn.dataset.newsQf === (f.continenteRapido || "all"),
+    );
+  });
+  const panel = document.getElementById("news-filters-panel");
+  const toggle = document.getElementById("toggle-news-filters");
+  if (panel && toggle) {
+    const open = !!f.expandido;
+    panel.classList.toggle("hidden", !open);
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    toggle.textContent = open ? "🔍 Ocultar filtros" : "🔍 Filtros avanzados";
+  }
+}
+
+function contarNoticiasPorContinenteRapido(qf) {
+  const noticias = (appData.noticiasReales || []).map(enrichNoticia);
+  if (qf === "all") return noticias.length;
+  return noticias.filter((n) => (n.continente || "global") === qf).length;
+}
+
+function actualizarConteosFiltrosNoticiasRapidos() {
+  document.querySelectorAll(".news-qf-btn[data-news-qf]").forEach((btn) => {
+    const qf = btn.dataset.newsQf;
+    const badge = btn.querySelector(".legend-count");
+    if (badge) badge.textContent = String(contarNoticiasPorContinenteRapido(qf));
+  });
+}
+
+function aplicarFiltroRapidoNoticias(qf) {
+  const f = ensureFiltrosNoticias();
+  f.continenteRapido = qf || "all";
+  document.querySelectorAll(".news-qf-btn[data-news-qf]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.newsQf === f.continenteRapido);
+  });
+  filtrarNoticias(true);
+  guardarPreferencias();
+}
+
+function actualizarResumenFiltrosNoticias(mostradas, total, f) {
+  const summary = document.getElementById("news-filter-summary");
+  const badge = document.getElementById("news-filter-badge");
+  let activos = contarFiltrosEventosActivos(f);
+  if (f.leido && f.leido !== "all") activos++;
+  if (f.continenteRapido && f.continenteRapido !== "all") activos++;
+  actualizarConteosFiltrosNoticiasRapidos();
+  if (summary) {
+    summary.textContent =
+      activos > 0
+        ? `${mostradas} de ${total} noticias · ${activos} filtro(s) activo(s)`
+        : `${mostradas} de ${total} noticias`;
+  }
+  if (badge) {
+    if (activos > 0) {
+      badge.hidden = false;
+      badge.textContent = String(activos);
+    } else {
+      badge.hidden = true;
+    }
+  }
+}
+
+function buildCategoriaFilterCheckboxesNews() {
+  const wrap = document.getElementById("filter-news-categorias");
+  if (!wrap || wrap.dataset.built === "1") return;
+  const f = ensureFiltrosNoticias();
+  wrap.innerHTML = EVENTO_CATEGORIAS_FILTRO.map(
+    (c) =>
+      `<label class="checkbox-item"><input type="checkbox" data-categoria="${c.id}" ${f.categorias[c.id] !== false ? "checked" : ""}><span>${c.label}</span></label>`,
+  ).join("");
+  wrap.dataset.built = "1";
+}
+
+function actualizarOpcionesFiltrosNoticias() {
+  buildCategoriaFilterCheckboxesNews();
+  const f = ensureFiltrosNoticias();
+  const noticias = appData.noticiasReales || [];
+  const fuentes = [
+    ...new Set(noticias.map((n) => n.fuente).filter(Boolean)),
+  ].sort();
+  const paises = [
+    ...new Set(
+      noticias.map((n) => n.pais || extractPaisFromUbicacion(n.ubicacion)).filter(Boolean),
+    ),
+  ].sort();
+  const ubicaciones = [
+    ...new Set(noticias.map((n) => n.ubicacion || n.titulo).filter(Boolean)),
+  ].sort();
+
+  const fuenteSel = document.getElementById("filter-news-fuente");
+  if (fuenteSel) {
+    const prev = f.fuente || "all";
+    fuenteSel.innerHTML =
+      '<option value="all">Todas las fuentes</option>' +
+      fuentes
+        .map(
+          (src) =>
+            `<option value="${src.replace(/"/g, "&quot;")}">${src}</option>`,
+        )
+        .join("");
+    fuenteSel.value = [...fuenteSel.options].some((o) => o.value === prev)
+      ? prev
+      : "all";
+  }
+
+  const paisList = document.getElementById("filter-news-pais-list");
+  if (paisList) {
+    paisList.innerHTML = paises
+      .map((p) => `<option value="${p.replace(/"/g, "&quot;")}">`)
+      .join("");
+  }
+  const ubicList = document.getElementById("filter-news-ubicacion-list");
+  if (ubicList) {
+    ubicList.innerHTML = ubicaciones
+      .slice(0, 80)
+      .map((u) => `<option value="${u.replace(/"/g, "&quot;")}">`)
+      .join("");
+  }
+}
+
+function togglePanelFiltrosNoticias() {
+  const panel = document.getElementById("news-filters-panel");
+  const toggle = document.getElementById("toggle-news-filters");
+  if (!panel || !toggle) return;
+  const open = panel.classList.contains("hidden");
+  panel.classList.toggle("hidden", !open);
+  toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  toggle.textContent = open ? "🔍 Ocultar filtros" : "🔍 Filtros avanzados";
+  ensureFiltrosNoticias().expandido = open;
+  guardarPreferencias();
+}
+
+function limpiarFiltrosNoticias() {
+  configuracion.filtrosNoticias = getDefaultFiltrosNoticias();
+  configuracion.filtros.noticias = "all";
+  aplicarFiltrosNoticiasUI();
+  filtrarNoticias();
+  guardarPreferencias();
+  showNotification("🧹 Filtros de noticias restablecidos", "info");
+}
+
+function setupNoticiasFiltrosAvanzados() {
+  buildCategoriaFilterCheckboxesNews();
+  const toggle = document.getElementById("toggle-news-filters");
+  const clearBtn = document.getElementById("clear-news-filters");
+  const panel = document.getElementById("news-filters-panel");
+  if (toggle) toggle.addEventListener("click", togglePanelFiltrosNoticias);
+  if (clearBtn) clearBtn.addEventListener("click", limpiarFiltrosNoticias);
+
+  const onFilterChange = () => {
+    filtrarNoticias();
+    guardarPreferencias();
+  };
+  const onFilterDebounced = () => guardarPreferenciasDebounced(400);
+
+  if (panel) {
+    panel.addEventListener("change", (e) => {
+      const t = e.target;
+      if (
+        t.matches(
+          "#filter-news-niveles input, #filter-news-categorias input, #filter-news-continentes input, #news-type-filter, #filter-news-fuente, #filter-news-leido",
+        )
+      ) {
+        onFilterChange();
+      }
+    });
+  }
+
+  const quickBar = document.getElementById("news-quick-filters");
+  if (quickBar) {
+    quickBar.addEventListener("click", (e) => {
+      const btn = e.target.closest(".news-qf-btn[data-news-qf]");
+      if (!btn) return;
+      aplicarFiltroRapidoNoticias(btn.dataset.newsQf);
+    });
+  }
+
+  ["filter-news-pais", "filter-news-ubicacion", "filter-news-busqueda"].forEach(
+    (id) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener("input", () => {
+          filtrarNoticias(true);
+          onFilterDebounced();
+        });
+      }
+    },
+  );
 }
 
 const realtimeAPIs = {
@@ -806,8 +1535,8 @@ function cargarCacheEnVivo() {
     if (!raw) return false;
     const data = JSON.parse(raw);
     if (!data.eventos || !data.eventos.length) return false;
-    appData.eventosRealesHoy = data.eventos;
-    appData.noticiasReales = data.noticias || [];
+    appData.eventosRealesHoy = (data.eventos || []).map(enrichEvento);
+    appData.noticiasReales = (data.noticias || []).map(enrichNoticia);
     datosEnVivoActivos = true;
     return true;
   } catch (err) {
@@ -836,7 +1565,7 @@ function procesarDatosEnVivo(earthquakes, eonet, gdacs, opts = {}) {
   if (eonet.length) fuentesOK.push(`EONET (${eonet.length})`);
   if (gdacs.length) fuentesOK.push(`GDACS (${gdacs.length})`);
 
-  const todos = [...earthquakes, ...eonet, ...gdacs];
+  const todos = [...earthquakes, ...eonet, ...gdacs].map(enrichEvento);
 
   if (todos.length === 0) {
     datosEnVivoActivos = false;
@@ -854,21 +1583,27 @@ function procesarDatosEnVivo(earthquakes, eonet, gdacs, opts = {}) {
 
   appData.eventosRealesHoy = (filtrados.length ? filtrados : todos).slice(0, 60);
 
-  appData.noticiasReales = todos.slice(0, 30).map((ev, idx) => ({
-    id: `news-${idx + 1}`,
-    titulo: ev.titulo,
-    fuente: ev.fuente,
-    pais: ev.ubicacion.split(",").pop().trim() || "Internacional",
-    continente: coordsToContinent(ev.lat, ev.lng),
-    tipo: ev.categoria,
-    icono: ev.icono,
-    textoCompleto: ev.descripcion,
-    fechaReal: ev.fecha,
-    tiempoDisplay: ev.fechaDisplay,
-    enlace: ev.enlace,
-    leido: false,
-    fechaLectura: null,
-  }));
+  appData.noticiasReales = todos.slice(0, 30).map((ev, idx) => {
+    enrichEvento(ev);
+    return {
+      id: `news-${idx + 1}`,
+      titulo: ev.titulo,
+      fuente: ev.fuente,
+      pais: ev.pais || extractPaisFromUbicacion(ev.ubicacion),
+      ubicacion: ev.ubicacion || "",
+      continente: ev.continente || coordsToContinent(ev.lat, ev.lng),
+      tipo: ev.categoria,
+      categoria: ev.categoria,
+      nivel: ev.nivel || "BAJO",
+      icono: ev.icono,
+      textoCompleto: ev.descripcion,
+      fechaReal: ev.fecha,
+      tiempoDisplay: ev.fechaDisplay,
+      enlace: ev.enlace,
+      leido: false,
+      fechaLectura: null,
+    };
+  });
 
   syncApisFromLiveResults(earthquakes, eonet, gdacs, {
     usgs: fetchEarthquakes._lastLatency,
@@ -1125,6 +1860,7 @@ function updateStats() {
   if (cards[2] && wf) cards[2].textContent = wf.titulo.slice(0, 60);
   if (cards[3] && st) cards[3].textContent = st.titulo.slice(0, 60);
 
+  actualizarConteosLeyenda();
   console.log("📊 Stats (datos reales):", estadisticasDinamicas);
 }
 
@@ -1232,12 +1968,32 @@ function actualizarLeyendaActiva(filtro) {
   });
 }
 
+function contarEventosPorFiltroLeyenda(filtro) {
+  const eventos = appData.eventosRealesHoy || [];
+  if (filtro === "all") return eventos.length;
+  return eventos.filter((ev) => eventoCoincideFiltroMapa(ev, filtro)).length;
+}
+
+function actualizarConteosLeyenda() {
+  document.querySelectorAll(".legend-item[data-filter]").forEach((el) => {
+    const filtro = el.dataset.filter;
+    const badge = el.querySelector(".legend-count");
+    if (badge) badge.textContent = String(contarEventosPorFiltroLeyenda(filtro));
+  });
+}
+
 function setMapFiltro(filtro) {
   mapFiltroActivo = filtro;
   configuracion.filtros = configuracion.filtros || {};
   configuracion.filtros.mapa = filtro;
+  configuracion.filtros.eventos = filtro;
+  const tipoSel = document.getElementById("event-type-filter");
+  if (tipoSel) tipoSel.value = filtro;
+  const f = ensureFiltrosEventos();
+  f.categoria = filtro;
   actualizarLeyendaActiva(filtro);
   loadEventsToMap();
+  filtrarEventos(true);
   guardarPreferencias();
 }
 
@@ -1250,6 +2006,7 @@ function configurarLeyendaMapa() {
     setMapFiltro(item.dataset.filter);
   });
   actualizarLeyendaActiva(mapFiltroActivo);
+  actualizarConteosLeyenda();
 }
 
 function eventoCoincideFiltroMapa(evento, filtro) {
@@ -1334,32 +2091,15 @@ function configurarEventListeners() {
     closeFullscreenBtn.addEventListener("click", cerrarMapaPantallaCompleta);
   if (centerMapBtn) centerMapBtn.addEventListener("click", centrarMapa);
 
-  // Eventos
   const refreshEventsBtn = document.getElementById("refresh-events");
-  const eventTypeFilter = document.getElementById("event-type-filter");
-
   if (refreshEventsBtn)
     refreshEventsBtn.addEventListener("click", actualizarEventos);
-  if (eventTypeFilter) {
-    eventTypeFilter.addEventListener("change", () => {
-      configuracion.filtros.eventos = eventTypeFilter.value;
-      filtrarEventos();
-      guardarPreferencias();
-    });
-  }
+  setupEventosFiltrosAvanzados();
 
   const refreshNewsBtn = document.getElementById("refresh-news");
-  const continentFilter = document.getElementById("continent-filter");
-
   if (refreshNewsBtn)
     refreshNewsBtn.addEventListener("click", actualizarNoticias);
-  if (continentFilter) {
-    continentFilter.addEventListener("change", () => {
-      configuracion.filtros.noticias = continentFilter.value;
-      filtrarNoticias();
-      guardarPreferencias();
-    });
-  }
+  setupNoticiasFiltrosAvanzados();
 
   // APIs
   const checkApisBtn = document.getElementById("check-all-apis");
@@ -1520,8 +2260,15 @@ function renderEvents() {
   eventsGrid.innerHTML = "";
 
   appData.eventosRealesHoy.forEach((evento) => {
+    enrichEvento(evento);
     const eventCard = document.createElement("div");
     eventCard.className = `event-card level-${evento.nivel} fade-in`;
+    eventCard.dataset.eventId = String(evento.id);
+    eventCard.dataset.nivel = evento.nivel || "BAJO";
+    eventCard.dataset.categoria = evento.categoria || "";
+    eventCard.dataset.continente = evento.continente || "global";
+    eventCard.dataset.pais = evento.pais || "";
+    eventCard.dataset.fuente = evento.fuente || "";
     eventCard.innerHTML = `
             <div class="event-header">
                 <h3 class="event-title">
@@ -1552,6 +2299,8 @@ function renderEvents() {
         `;
     eventsGrid.appendChild(eventCard);
   });
+  actualizarOpcionesFiltrosEventos();
+  filtrarEventos(true);
   console.log(
     `📊 ${appData.eventosRealesHoy.length} eventos cargados con botones funcionando`,
   );
@@ -1564,15 +2313,26 @@ function renderNewsPaginated() {
   newsGrid.innerHTML = "";
 
   appData.noticiasReales.forEach((noticia) => {
+    enrichNoticia(noticia);
     const newsCard = document.createElement("div");
     newsCard.className = `news-card ${noticia.leido ? "read" : "unread"} fade-in`;
+    newsCard.dataset.newsId = String(noticia.id);
+    newsCard.dataset.nivel = noticia.nivel || "BAJO";
+    newsCard.dataset.leido = noticia.leido ? "1" : "0";
+    newsCard.dataset.categoria = noticia.categoria || noticia.tipo || "";
+    newsCard.dataset.continente = noticia.continente || "global";
+    newsCard.dataset.pais = noticia.pais || "";
+    newsCard.dataset.fuente = noticia.fuente || "";
     newsCard.innerHTML = `
             <div class="news-header">
                 <h4 class="news-title">
                     <span class="news-type-icon">${noticia.icono}</span>
                     ${noticia.titulo}
                 </h4>
-                <span class="news-continent">${noticia.continente}</span>
+                <div class="news-badges">
+                    <span class="news-level ${noticia.nivel}">${noticia.nivel}</span>
+                    <span class="news-continent">${noticia.continente}</span>
+                </div>
             </div>
             <div class="news-source">${noticia.fuente} • ${noticia.pais} • ${noticia.tiempoDisplay}</div>
             <div class="news-description">${noticia.textoCompleto}</div>
@@ -1592,6 +2352,8 @@ function renderNewsPaginated() {
         `;
     newsGrid.appendChild(newsCard);
   });
+  actualizarOpcionesFiltrosNoticias();
+  filtrarNoticias(true);
   console.log(
     `📰 ${appData.noticiasReales.length} noticias cargadas con botones funcionando`,
   );
@@ -1817,42 +2579,54 @@ async function verificarTodasLasAPIs() {
 }
 
 function filtrarEventos(silent) {
-  const tipoFiltro =
-    document.getElementById("event-type-filter")?.value || "all";
-  configuracion.filtros = configuracion.filtros || {};
-  configuracion.filtros.eventos = tipoFiltro;
+  const f = recogerFiltrosEventosDesdeUI();
+  configuracion.filtrosEventos = f;
   const eventCards = document.querySelectorAll(".event-card");
+  const total = eventCards.length;
   let mostrados = 0;
+  const byId = new Map(
+    (appData.eventosRealesHoy || []).map((ev) => [String(ev.id), ev]),
+  );
 
   eventCards.forEach((card) => {
-    const iconEl = card.querySelector(".event-icon");
-    const shouldShow =
-      tipoFiltro === "all" ||
-      (iconEl && iconEl.textContent.includes(getTipoIcon(tipoFiltro)));
-    card.style.display = shouldShow ? "block" : "none";
+    const ev =
+      byId.get(card.dataset.eventId) ||
+      appData.eventosRealesHoy.find(
+        (e) => String(e.id) === card.dataset.eventId,
+      );
+    const shouldShow = eventoPasaFiltrosAvanzados(ev, f);
+    card.classList.toggle("event-card--filtered-out", !shouldShow);
+    card.style.display = shouldShow ? "" : "none";
     if (shouldShow) mostrados++;
   });
 
+  actualizarResumenFiltrosEventos(mostrados, total, f);
   if (!silent) showNotification(`🔍 ${mostrados} eventos mostrados`, "info");
 }
 
 function filtrarNoticias(silent) {
-  const continenteFiltro =
-    document.getElementById("continent-filter")?.value || "all";
-  configuracion.filtros = configuracion.filtros || {};
-  configuracion.filtros.noticias = continenteFiltro;
+  const f = recogerFiltrosNoticiasDesdeUI();
+  configuracion.filtrosNoticias = f;
   const newsCards = document.querySelectorAll(".news-card");
+  const total = newsCards.length;
   let mostradas = 0;
+  const byId = new Map(
+    (appData.noticiasReales || []).map((n) => [String(n.id), n]),
+  );
 
   newsCards.forEach((card) => {
-    const contEl = card.querySelector(".news-continent");
-    const shouldShow =
-      continenteFiltro === "all" ||
-      (contEl && contEl.textContent === continenteFiltro);
-    card.style.display = shouldShow ? "block" : "none";
+    const n =
+      byId.get(card.dataset.newsId) ||
+      appData.noticiasReales.find(
+        (item) => String(item.id) === card.dataset.newsId,
+      );
+    const shouldShow = noticiaPasaFiltrosAvanzados(n, f);
+    card.classList.toggle("news-card--filtered-out", !shouldShow);
+    card.style.display = shouldShow ? "" : "none";
     if (shouldShow) mostradas++;
   });
 
+  actualizarResumenFiltrosNoticias(mostradas, total, f);
   if (!silent) showNotification(`📰 ${mostradas} noticias mostradas`, "info");
 }
 

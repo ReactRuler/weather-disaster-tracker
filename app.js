@@ -240,12 +240,6 @@ let marcadoresVisibles = [];
 let sonidoNotificacion = null;
 let temaActual = "light";
 let paginaActualAPIs = 1;
-let estadisticasDinamicas = {
-  terremotos: 1,
-  volcanes: 3,
-  incendios: 1,
-  tormentas: 1,
-};
 let autoRefreshTimer = null;
 let ultimaActualizacionLive = null;
 let datosEnVivoActivos = false;
@@ -1890,43 +1884,7 @@ function updateApiData() {
 }
 
 function updateStats() {
-  const eventos = appData.eventosRealesHoy || [];
-  const count = (cat) => eventos.filter((e) => e.categoria === cat).length;
-
-  estadisticasDinamicas.terremotos = count("earthquake");
-  estadisticasDinamicas.volcanes = count("volcano");
-  estadisticasDinamicas.incendios = count("wildfire");
-  estadisticasDinamicas.tormentas =
-    count("storm") + count("hurricane") + count("tornado");
-
-  const earthquakeCount = document.getElementById("earthquake-count");
-  const volcanoCount = document.getElementById("volcano-count");
-  const fireCount = document.getElementById("fire-count");
-  const stormCount = document.getElementById("storm-count");
-
-  if (earthquakeCount)
-    earthquakeCount.textContent = estadisticasDinamicas.terremotos;
-  if (volcanoCount) volcanoCount.textContent = estadisticasDinamicas.volcanes;
-  if (fireCount) fireCount.textContent = estadisticasDinamicas.incendios;
-  if (stormCount) stormCount.textContent = estadisticasDinamicas.tormentas;
-
-  const eq = eventos.find((e) => e.categoria === "earthquake");
-  const vc = eventos.find((e) => e.categoria === "volcano");
-  const wf = eventos.find((e) => e.categoria === "wildfire");
-  const st = eventos.find(
-    (e) =>
-      e.categoria === "storm" ||
-      e.categoria === "hurricane" ||
-      e.categoria === "tornado",
-  );
-  const cards = document.querySelectorAll(".stat-card .stat-detail");
-  if (cards[0] && eq) cards[0].textContent = eq.titulo.slice(0, 60);
-  if (cards[1] && vc) cards[1].textContent = vc.titulo.slice(0, 60);
-  if (cards[2] && wf) cards[2].textContent = wf.titulo.slice(0, 60);
-  if (cards[3] && st) cards[3].textContent = st.titulo.slice(0, 60);
-
   actualizarConteosLeyenda();
-  console.log("📊 Stats (datos reales):", estadisticasDinamicas);
 }
 
 // FUNCIÓN: ACTUALIZAR TÍTULO DE NOTICIAS

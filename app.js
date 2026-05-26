@@ -173,9 +173,12 @@ const appData = {
 // Variables globales
 let configuracion = {
   sonidoActivado: true,
+  tema: "light",
   expandidaConfiguracion: false,
   frecuenciaActualizacion: 10,
   nivelMinimo: "all",
+  ubicacion: "",
+  radio: 500,
   tiposMonitoreados: {
     earthquake: true,
     volcano: true,
@@ -190,6 +193,17 @@ let configuracion = {
     heatwave: true,
     coldwave: true,
     snowstorm: true,
+  },
+  metodosAlerta: {
+    push: true,
+    email: false,
+    sms: false,
+    webhook: false,
+  },
+  filtros: {
+    eventos: "all",
+    noticias: "all",
+    mapa: "all",
   },
 };
 
@@ -211,7 +225,247 @@ let datosEnVivoActivos = false;
 let idsAlertados = new Set();
 let mapFiltroActivo = "all";
 let cargaEnCurso = false;
+let prefsSaveTimer = null;
 const CACHE_LIVE_KEY = "agenteEdu-live-cache";
+const PREFS_STORAGE_KEY = "agenteEdu-config";
+const PREFS_COOKIE = "agenteEdu_prefs";
+const PREFS_COOKIE_MAX_AGE = 60 * 60 * 24 * 400;
+
+function getCookiePath() {
+  const segs = location.pathname.split("/").filter(Boolean);
+  if (segs.length <= 1) return "/";
+  return "/" + segs.slice(0, -1).join("/") + "/";
+}
+
+function setPrefCookie(payload) {
+  try {
+    const compact = encodeURIComponent(JSON.stringify(payload));
+    document.cookie = `${PREFS_COOKIE}=${compact};path=${getCookiePath()};max-age=${PREFS_COOKIE_MAX_AGE};SameSite=Lax`;
+  } catch (err) {
+    console.warn("⚠️ Cookie prefs:", err);
+  }
+}
+
+function getPrefCookie() {
+  try {
+    const match = document.cookie.match(
+      new RegExp(
+        "(?:^|;\\s*)" +
+          PREFS_COOKIE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
+          "=([^;]*)",
+      ),
+    );
+    if (!match) return null;
+    return JSON.parse(decodeURIComponent(match[1]));
+  } catch {
+    return null;
+  }
+}
+
+function guardarPreferencias() {
+  configuracion.tema = temaActual;
+  configuracion.filtros = configuracion.filtros || {};
+  configuracion.filtros.mapa = mapFiltroActivo;
+  try {
+    localStorage.setItem(PREFS_STORAGE_KEY, JSON.stringify(configuracion));
+  } catch (err) {
+    console.warn("⚠️ No se pudo guardar prefs:", err);
+  }
+  setPrefCookie({
+    t: temaActual,
+    s: !!configuracion.sonidoActivado,
+  });
+}
+
+function guardarPreferenciasDebounced(ms = 350) {
+  clearTimeout(prefsSaveTimer);
+  prefsSaveTimer = setTimeout(() => {
+    recogerPreferenciasDesdeUI();
+    guardarPreferencias();
+  }, ms);
+}
+
+function leerPreferencias() {
+  try {
+    const stored = localStorage.getItem(PREFS_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      configuracion = { ...configuracion, ...parsed };
+      if (parsed.tiposMonitoreados) {
+        configuracion.tiposMonitoreados = {
+          ...configuracion.tiposMonitoreados,
+          ...parsed.tiposMonitoreados,
+        };
+      }
+      if (parsed.metodosAlerta) {
+        configuracion.metodosAlerta = {
+          ...configuracion.metodosAlerta,
+          ...parsed.metodosAlerta,
+        };
+      }
+      if (parsed.filtros) {
+        configuracion.filtros = {
+          ...configuracion.filtros,
+          ...parsed.filtros,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("⚠️ No se pudo cargar prefs:", err);
+  }
+  const fromCookie = getPrefCookie();
+  if (fromCookie) {
+    if (fromCookie.t === "dark" || fromCookie.t === "light") {
+      configuracion.tema = fromCookie.t;
+    }
+    if (typeof fromCookie.s === "boolean") {
+      configuracion.sonidoActivado = fromCookie.s;
+    }
+  }
+  temaActual = configuracion.tema === "dark" ? "dark" : "light";
+  configuracion.tema = temaActual;
+  mapFiltroActivo = configuracion.filtros?.mapa || "all";
+  if (!configuracion.filtros) {
+    configuracion.filtros = { eventos: "all", noticias: "all", mapa: "all" };
+  }
+  configuracion.filtros.mapa = mapFiltroActivo;
+}
+
+function recogerPreferenciasDesdeUI() {
+  const locInput = document.getElementById("location-input");
+  const radSlider = document.getElementById("radius-slider");
+  const freqSel = document.getElementById("update-frequency");
+  const alertSel = document.getElementById("alert-level");
+  const eventFilter = document.getElementById("event-type-filter");
+  const continentFilter = document.getElementById("continent-filter");
+
+  if (locInput) configuracion.ubicacion = locInput.value.trim();
+  if (radSlider) configuracion.radio = Number(radSlider.value) || 500;
+  if (freqSel)
+    configuracion.frecuenciaActualizacion = Number(freqSel.value) || 10;
+  if (alertSel) configuracion.nivelMinimo = alertSel.value;
+  if (eventFilter) configuracion.filtros.eventos = eventFilter.value;
+  if (continentFilter) configuracion.filtros.noticias = continentFilter.value;
+  configuracion.filtros.mapa = mapFiltroActivo;
+  configuracion.tema = temaActual;
+
+  document
+    .querySelectorAll('.disaster-types input[type="checkbox"]')
+    .forEach((cb) => {
+      const id = cb.id.replace("monitor-", "");
+      configuracion.tiposMonitoreados[id] = cb.checked;
+    });
+
+  const metodoIds = {
+    push: "push-notifications",
+    email: "email-notifications",
+    sms: "sms-notifications",
+    webhook: "webhook-notifications",
+  };
+  Object.entries(metodoIds).forEach(([k, id]) => {
+    const el = document.getElementById(id);
+    if (el) configuracion.metodosAlerta[k] = el.checked;
+  });
+}
+
+function aplicarEstadoConfiguracion(expandida, silent) {
+  const configHeader = document.getElementById("config-header");
+  const configContent = document.getElementById("config-content");
+  if (!configHeader || !configContent) return;
+
+  configuracion.expandidaConfiguracion = !!expandida;
+
+  if (configuracion.expandidaConfiguracion) {
+    configHeader.textContent = "📋 Contraer Configuración";
+    configContent.classList.remove("hidden");
+    configContent.style.display = "block";
+    configContent.style.maxHeight = "2000px";
+    configContent.style.opacity = "1";
+    configContent.style.marginTop = "var(--space-20)";
+    configContent.style.paddingTop = "var(--space-20)";
+    if (!silent) showNotification("📋 Configuración expandida", "info");
+  } else {
+    configHeader.textContent = "📋 Expandir Configuración";
+    configContent.classList.add("hidden");
+    configContent.style.display = "none";
+    configContent.style.maxHeight = "0";
+    configContent.style.opacity = "0";
+    configContent.style.marginTop = "0";
+    configContent.style.paddingTop = "0";
+    if (!silent) showNotification("📋 Configuración contraída", "info");
+  }
+}
+
+function aplicarPreferenciasUI() {
+  document.documentElement.setAttribute("data-color-scheme", temaActual);
+
+  const soundBtn = document.getElementById("toggle-sound");
+  if (soundBtn) {
+    soundBtn.textContent = configuracion.sonidoActivado
+      ? "🔊 Sonido: ON"
+      : "🔇 Sonido: OFF";
+    soundBtn.className = configuracion.sonidoActivado
+      ? "btn btn--primary btn--sm"
+      : "btn btn--outline btn--sm";
+  }
+
+  const themeBtn = document.getElementById("toggle-theme");
+  if (themeBtn) {
+    themeBtn.textContent =
+      temaActual === "dark" ? "☀️ Modo Claro" : "🌙 Modo Oscuro";
+  }
+
+  const freqSel = document.getElementById("update-frequency");
+  if (freqSel) freqSel.value = String(configuracion.frecuenciaActualizacion);
+
+  const alertSel = document.getElementById("alert-level");
+  if (alertSel && configuracion.nivelMinimo) alertSel.value = configuracion.nivelMinimo;
+
+  const locInput = document.getElementById("location-input");
+  if (locInput && configuracion.ubicacion) locInput.value = configuracion.ubicacion;
+
+  const radSlider = document.getElementById("radius-slider");
+  const radValue = document.getElementById("radius-value");
+  if (radSlider && configuracion.radio) {
+    radSlider.value = configuracion.radio;
+    if (radValue) radValue.textContent = configuracion.radio;
+  }
+
+  Object.entries(configuracion.tiposMonitoreados || {}).forEach(([k, v]) => {
+    const cb = document.getElementById(`monitor-${k}`);
+    if (cb) cb.checked = !!v;
+  });
+
+  const metodoIds = {
+    push: "push-notifications",
+    email: "email-notifications",
+    sms: "sms-notifications",
+    webhook: "webhook-notifications",
+  };
+  Object.entries(configuracion.metodosAlerta || {}).forEach(([k, v]) => {
+    const el = document.getElementById(metodoIds[k]);
+    if (el) el.checked = !!v;
+  });
+
+  const eventFilter = document.getElementById("event-type-filter");
+  if (eventFilter && configuracion.filtros?.eventos) {
+    eventFilter.value = configuracion.filtros.eventos;
+  }
+
+  const continentFilter = document.getElementById("continent-filter");
+  if (continentFilter && configuracion.filtros?.noticias) {
+    continentFilter.value = configuracion.filtros.noticias;
+  }
+
+  mapFiltroActivo = configuracion.filtros?.mapa || "all";
+  actualizarLeyendaActiva(mapFiltroActivo);
+  aplicarEstadoConfiguracion(configuracion.expandidaConfiguracion, true);
+}
+
+function aplicarFiltrosPersistidos() {
+  filtrarEventos(true);
+  filtrarNoticias(true);
+}
 
 const realtimeAPIs = {
   usgsEarthquakesDay:
@@ -573,6 +827,7 @@ function refrescarVistaDatos() {
   if (lastUpdate) lastUpdate.textContent = timeString;
   const apiTimestamp = document.getElementById("api-timestamp");
   if (apiTimestamp) apiTimestamp.textContent = timeString;
+  aplicarFiltrosPersistidos();
 }
 
 function procesarDatosEnVivo(earthquakes, eonet, gdacs, opts = {}) {
@@ -769,7 +1024,10 @@ function inicializarAplicacion() {
     actualizarEstadoConexion("🔄 Cargando datos en vivo...", "warning");
   }
 
-  setTimeout(() => inicializarMapaLeaflet(), 100);
+  setTimeout(() => {
+    inicializarMapaLeaflet();
+    aplicarFiltrosPersistidos();
+  }, 100);
 
   fetchAllRealtimeData({ staged: true, notificar: false })
     .then(() => refrescarVistaDatos())
@@ -976,8 +1234,11 @@ function actualizarLeyendaActiva(filtro) {
 
 function setMapFiltro(filtro) {
   mapFiltroActivo = filtro;
+  configuracion.filtros = configuracion.filtros || {};
+  configuracion.filtros.mapa = filtro;
   actualizarLeyendaActiva(filtro);
   loadEventsToMap();
+  guardarPreferencias();
 }
 
 function configurarLeyendaMapa() {
@@ -1057,6 +1318,8 @@ function configurarEventListeners() {
       if (radiusValue) {
         radiusValue.textContent = e.target.value;
       }
+      configuracion.radio = Number(e.target.value) || 500;
+      guardarPreferenciasDebounced();
     });
   }
 
@@ -1077,17 +1340,26 @@ function configurarEventListeners() {
 
   if (refreshEventsBtn)
     refreshEventsBtn.addEventListener("click", actualizarEventos);
-  if (eventTypeFilter)
-    eventTypeFilter.addEventListener("change", filtrarEventos);
+  if (eventTypeFilter) {
+    eventTypeFilter.addEventListener("change", () => {
+      configuracion.filtros.eventos = eventTypeFilter.value;
+      filtrarEventos();
+      guardarPreferencias();
+    });
+  }
 
-  // Noticias
   const refreshNewsBtn = document.getElementById("refresh-news");
   const continentFilter = document.getElementById("continent-filter");
 
   if (refreshNewsBtn)
     refreshNewsBtn.addEventListener("click", actualizarNoticias);
-  if (continentFilter)
-    continentFilter.addEventListener("change", filtrarNoticias);
+  if (continentFilter) {
+    continentFilter.addEventListener("change", () => {
+      configuracion.filtros.noticias = continentFilter.value;
+      filtrarNoticias();
+      guardarPreferencias();
+    });
+  }
 
   // APIs
   const checkApisBtn = document.getElementById("check-all-apis");
@@ -1101,6 +1373,7 @@ function configurarEventListeners() {
     updateFrequencySel.addEventListener("change", (e) => {
       configuracion.frecuenciaActualizacion = Number(e.target.value) || 10;
       setupAutoRefresh();
+      guardarPreferencias();
       showNotification(
         `⏱️ Frecuencia de actualización: cada ${configuracion.frecuenciaActualizacion} min`,
         "info",
@@ -1112,7 +1385,13 @@ function configurarEventListeners() {
   if (alertLevelSel) {
     alertLevelSel.addEventListener("change", (e) => {
       configuracion.nivelMinimo = e.target.value;
+      guardarPreferencias();
     });
+  }
+
+  const locInput = document.getElementById("location-input");
+  if (locInput) {
+    locInput.addEventListener("input", () => guardarPreferenciasDebounced(500));
   }
 
   document
@@ -1121,6 +1400,18 @@ function configurarEventListeners() {
       cb.addEventListener("change", (e) => {
         const id = e.target.id.replace("monitor-", "");
         configuracion.tiposMonitoreados[id] = e.target.checked;
+        guardarPreferencias();
+      });
+    });
+
+  document
+    .querySelectorAll(
+      "#push-notifications, #email-notifications, #sms-notifications, #webhook-notifications",
+    )
+    .forEach((cb) => {
+      cb.addEventListener("change", () => {
+        recogerPreferenciasDesdeUI();
+        guardarPreferencias();
       });
     });
 
@@ -1135,49 +1426,8 @@ function configurarEventListeners() {
 
 // FUNCIÓN CRÍTICA CORREGIDA: TOGGLE CONFIGURACIÓN EXPANDIBLE
 function toggleConfiguracion() {
-  console.log("🔧 CORREGIDO: Toggle configuración llamado");
-
-  const configHeader = document.getElementById("config-header");
-  const configContent = document.getElementById("config-content");
-
-  if (!configHeader || !configContent) {
-    console.error("❌ Elementos de configuración no encontrados");
-    return;
-  }
-
-  configuracion.expandidaConfiguracion = !configuracion.expandidaConfiguracion;
-
-  console.log("📋 Estado configuración:", configuracion.expandidaConfiguracion);
-
-  if (configuracion.expandidaConfiguracion) {
-    // EXPANDIR - CORREGIDO
-    configHeader.textContent = "📋 Contraer Configuración";
-    configContent.classList.remove("hidden");
-
-    // FORZAR VISIBILIDAD - CORREGIDO
-    configContent.style.display = "block";
-    configContent.style.maxHeight = "2000px";
-    configContent.style.opacity = "1";
-    configContent.style.marginTop = "var(--space-20)";
-    configContent.style.paddingTop = "var(--space-20)";
-
-    console.log("✅ CORREGIDO: Configuración expandida");
-    showNotification("📋 Configuración expandida", "info");
-  } else {
-    // CONTRAER - CORREGIDO
-    configHeader.textContent = "📋 Expandir Configuración";
-    configContent.classList.add("hidden");
-
-    // FORZAR OCULTAMIENTO - CORREGIDO
-    configContent.style.display = "none";
-    configContent.style.maxHeight = "0";
-    configContent.style.opacity = "0";
-    configContent.style.marginTop = "0";
-    configContent.style.paddingTop = "0";
-
-    console.log("✅ CORREGIDO: Configuración contraída");
-    showNotification("📋 Configuración contraída", "info");
-  }
+  aplicarEstadoConfiguracion(!configuracion.expandidaConfiguracion, false);
+  guardarPreferencias();
 }
 
 // FUNCIÓN CRÍTICA: BOTÓN OJO DINÁMICO PARA EVENTOS
@@ -1566,40 +1816,44 @@ async function verificarTodasLasAPIs() {
   }
 }
 
-function filtrarEventos() {
+function filtrarEventos(silent) {
   const tipoFiltro =
     document.getElementById("event-type-filter")?.value || "all";
+  configuracion.filtros = configuracion.filtros || {};
+  configuracion.filtros.eventos = tipoFiltro;
   const eventCards = document.querySelectorAll(".event-card");
   let mostrados = 0;
 
   eventCards.forEach((card) => {
+    const iconEl = card.querySelector(".event-icon");
     const shouldShow =
       tipoFiltro === "all" ||
-      card
-        .querySelector(".event-icon")
-        .textContent.includes(getTipoIcon(tipoFiltro));
+      (iconEl && iconEl.textContent.includes(getTipoIcon(tipoFiltro)));
     card.style.display = shouldShow ? "block" : "none";
     if (shouldShow) mostrados++;
   });
 
-  showNotification(`🔍 ${mostrados} eventos mostrados`, "info");
+  if (!silent) showNotification(`🔍 ${mostrados} eventos mostrados`, "info");
 }
 
-function filtrarNoticias() {
+function filtrarNoticias(silent) {
   const continenteFiltro =
     document.getElementById("continent-filter")?.value || "all";
+  configuracion.filtros = configuracion.filtros || {};
+  configuracion.filtros.noticias = continenteFiltro;
   const newsCards = document.querySelectorAll(".news-card");
   let mostradas = 0;
 
   newsCards.forEach((card) => {
+    const contEl = card.querySelector(".news-continent");
     const shouldShow =
       continenteFiltro === "all" ||
-      card.querySelector(".news-continent").textContent === continenteFiltro;
+      (contEl && contEl.textContent === continenteFiltro);
     card.style.display = shouldShow ? "block" : "none";
     if (shouldShow) mostradas++;
   });
 
-  showNotification(`📰 ${mostradas} noticias mostradas`, "info");
+  if (!silent) showNotification(`📰 ${mostradas} noticias mostradas`, "info");
 }
 
 function getTipoIcon(tipo) {
@@ -1623,6 +1877,7 @@ function toggleSonido() {
       ? "btn btn--primary btn--sm"
       : "btn btn--outline btn--sm";
   }
+  guardarPreferencias();
   showNotification(
     configuracion.sonidoActivado
       ? "🔊 Sonido activado"
@@ -1633,12 +1888,14 @@ function toggleSonido() {
 
 function toggleTheme() {
   temaActual = temaActual === "light" ? "dark" : "light";
+  configuracion.tema = temaActual;
   document.documentElement.setAttribute("data-color-scheme", temaActual);
   const themeBtn = document.getElementById("toggle-theme");
   if (themeBtn) {
     themeBtn.textContent =
       temaActual === "dark" ? "☀️ Modo Claro" : "🌙 Modo Oscuro";
   }
+  guardarPreferencias();
   showNotification(
     `🎨 Tema ${temaActual === "dark" ? "oscuro" : "claro"} activado`,
     "success",
@@ -1653,39 +1910,9 @@ function centrarMapa() {
 }
 
 function cargarConfiguracion() {
-  try {
-    const stored = localStorage.getItem("agenteEdu-config");
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      configuracion = { ...configuracion, ...parsed };
-    }
-  } catch (err) {
-    console.warn("⚠️ No se pudo cargar config persistida:", err);
-  }
-
-  const freqSel = document.getElementById("update-frequency");
-  if (freqSel) freqSel.value = String(configuracion.frecuenciaActualizacion);
-
-  const alertSel = document.getElementById("alert-level");
-  if (alertSel && configuracion.nivelMinimo)
-    alertSel.value = configuracion.nivelMinimo;
-
-  const locInput = document.getElementById("location-input");
-  if (locInput && configuracion.ubicacion) locInput.value = configuracion.ubicacion;
-
-  const radSlider = document.getElementById("radius-slider");
-  const radValue = document.getElementById("radius-value");
-  if (radSlider && configuracion.radio) {
-    radSlider.value = configuracion.radio;
-    if (radValue) radValue.textContent = configuracion.radio;
-  }
-
-  Object.entries(configuracion.tiposMonitoreados || {}).forEach(([k, v]) => {
-    const cb = document.getElementById(`monitor-${k}`);
-    if (cb) cb.checked = !!v;
-  });
-
-  console.log("📋 Configuración cargada", configuracion);
+  leerPreferencias();
+  aplicarPreferenciasUI();
+  setupAutoRefresh();
 }
 
 function guardarConfiguracion() {
@@ -1696,29 +1923,8 @@ function guardarConfiguracion() {
   saveBtn.textContent = "⏳ Guardando...";
   saveBtn.disabled = true;
 
-  const locInput = document.getElementById("location-input");
-  const radSlider = document.getElementById("radius-slider");
-  const freqSel = document.getElementById("update-frequency");
-  const alertSel = document.getElementById("alert-level");
-
-  if (locInput) configuracion.ubicacion = locInput.value.trim();
-  if (radSlider) configuracion.radio = Number(radSlider.value) || 500;
-  if (freqSel) configuracion.frecuenciaActualizacion = Number(freqSel.value) || 10;
-  if (alertSel) configuracion.nivelMinimo = alertSel.value;
-
-  document
-    .querySelectorAll('.disaster-types input[type="checkbox"]')
-    .forEach((cb) => {
-      const id = cb.id.replace("monitor-", "");
-      configuracion.tiposMonitoreados[id] = cb.checked;
-    });
-
-  try {
-    localStorage.setItem("agenteEdu-config", JSON.stringify(configuracion));
-  } catch (err) {
-    console.warn("⚠️ No se pudo guardar config:", err);
-  }
-
+  recogerPreferenciasDesdeUI();
+  guardarPreferencias();
   setupAutoRefresh();
   ejecutarActualizacionEnVivo({ silent: true });
 

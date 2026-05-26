@@ -9,6 +9,18 @@
          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
          crossorigin=""/>
     <link rel="stylesheet" href="style.css">
+    <script>
+    (function () {
+      var m = document.cookie.match(/(?:^|;\s*)agenteEdu_prefs=([^;]*)/);
+      if (!m) return;
+      try {
+        var p = JSON.parse(decodeURIComponent(m[1]));
+        if (p.t === "dark" || p.t === "light") {
+          document.documentElement.setAttribute("data-color-scheme", p.t);
+        }
+      } catch (e) {}
+    })();
+    </script>
 </head>
 <body>
     <div class="app-container">

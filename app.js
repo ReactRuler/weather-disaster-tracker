@@ -174,7 +174,7 @@ const appData = {
 let configuracion = {
   sonidoActivado: true,
   expandidaConfiguracion: false,
-  frecuenciaActualizacion: 5,
+  frecuenciaActualizacion: 10,
   nivelMinimo: "all",
   tiposMonitoreados: {
     earthquake: true,
@@ -210,6 +210,8 @@ let ultimaActualizacionLive = null;
 let datosEnVivoActivos = false;
 let idsAlertados = new Set();
 let mapFiltroActivo = "all";
+let cargaEnCurso = false;
+const CACHE_LIVE_KEY = "agenteEdu-live-cache";
 
 const realtimeAPIs = {
   usgsEarthquakesDay:
@@ -217,7 +219,7 @@ const realtimeAPIs = {
   usgsEarthquakesHour:
     "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson",
   nasaEonetOpen:
-    "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=50",
+    "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=30",
   gdacsEvents:
     "https://www.gdacs.org/gdacsapi/api/events/geteventlist/MAP?eventlist=EQ;TC;FL;VO;DR;WF&alertlevel=Green;Orange;Red",
 };
@@ -295,7 +297,7 @@ function formatApiTimestamp() {
   return `${now.getDate()} sept, ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 }
 
-async function fetchWithTimeout(url, ms = 20000) {
+async function fetchWithTimeout(url, ms = 12000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
@@ -368,7 +370,7 @@ async function fetchEarthquakes() {
   try {
     const response = await fetchWithTimeout(
       realtimeAPIs.usgsEarthquakesDay,
-      20000,
+      12000,
     );
     if (!response.ok) throw new Error(`USGS HTTP ${response.status}`);
     const data = await response.json();
@@ -422,78 +424,69 @@ async function fetchEarthquakes() {
 }
 
 async function fetchEONET() {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const t0 = performance.now();
-    try {
-      const response = await fetchWithTimeout(
-        realtimeAPIs.nasaEonetOpen,
-        attempt === 0 ? 20000 : 35000,
-      );
-      if (!response.ok) throw new Error(`EONET HTTP ${response.status}`);
-      const data = await response.json();
-      const events = data.events || [];
-      const out = [];
-      events.forEach((ev) => {
-        const cat = ev.categories && ev.categories[0] && ev.categories[0].id;
-        const mapping = EONET_CATEGORY_MAP[cat] || {
-          categoria: "storm",
-          icono: "⚠️",
-          tipo: "⚠️ Evento Natural",
-        };
-        const pos = eonetLatLng(ev.geometry || []);
-        if (!pos) return;
-        const latestDate =
-          ev.geometry && ev.geometry.length
-            ? new Date(ev.geometry[ev.geometry.length - 1].date).getTime()
-            : Date.now();
-        const source = (ev.sources && ev.sources[0]) || {};
-        const catTitle =
-          ev.categories && ev.categories[0] && ev.categories[0].title;
-        out.push({
-          id: `eonet-${ev.id}`,
-          tipo: mapping.tipo,
-          titulo: ev.title,
-          ubicacion: ev.title.includes(",")
-            ? ev.title.split(",").slice(-2).join(",").trim()
-            : `${pos.lat.toFixed(2)}, ${pos.lng.toFixed(2)}`,
-          nivel: eonetSeverityLevel(ev),
-          descripcion:
-            ev.description ||
-            `${mapping.tipo} reportado por NASA EONET. Categoría: ${catTitle || cat}.`,
-          fecha: new Date(latestDate).toISOString(),
-          fechaDisplay: timeAgo(latestDate),
-          fuente: source.id || "NASA EONET",
-          enlace: source.url || ev.link || "https://eonet.gsfc.nasa.gov",
-          lat: pos.lat,
-          lng: pos.lng,
-          categoria: mapping.categoria,
-          icono: mapping.icono,
-          leido: false,
-          fechaLectura: null,
-        });
+  const t0 = performance.now();
+  try {
+    const response = await fetchWithTimeout(realtimeAPIs.nasaEonetOpen, 12000);
+    if (!response.ok) throw new Error(`EONET HTTP ${response.status}`);
+    const data = await response.json();
+    const events = data.events || [];
+    const out = [];
+    events.forEach((ev) => {
+      const cat = ev.categories && ev.categories[0] && ev.categories[0].id;
+      const mapping = EONET_CATEGORY_MAP[cat] || {
+        categoria: "storm",
+        icono: "⚠️",
+        tipo: "⚠️ Evento Natural",
+      };
+      const pos = eonetLatLng(ev.geometry || []);
+      if (!pos) return;
+      const latestDate =
+        ev.geometry && ev.geometry.length
+          ? new Date(ev.geometry[ev.geometry.length - 1].date).getTime()
+          : Date.now();
+      const source = (ev.sources && ev.sources[0]) || {};
+      const catTitle =
+        ev.categories && ev.categories[0] && ev.categories[0].title;
+      out.push({
+        id: `eonet-${ev.id}`,
+        tipo: mapping.tipo,
+        titulo: ev.title,
+        ubicacion: ev.title.includes(",")
+          ? ev.title.split(",").slice(-2).join(",").trim()
+          : `${pos.lat.toFixed(2)}, ${pos.lng.toFixed(2)}`,
+        nivel: eonetSeverityLevel(ev),
+        descripcion:
+          ev.description ||
+          `${mapping.tipo} reportado por NASA EONET. Categoría: ${catTitle || cat}.`,
+        fecha: new Date(latestDate).toISOString(),
+        fechaDisplay: timeAgo(latestDate),
+        fuente: source.id || "NASA EONET",
+        enlace: source.url || ev.link || "https://eonet.gsfc.nasa.gov",
+        lat: pos.lat,
+        lng: pos.lng,
+        categoria: mapping.categoria,
+        icono: mapping.icono,
+        leido: false,
+        fechaLectura: null,
       });
-      fetchEONET._lastLatency = Math.round(performance.now() - t0);
-      return out;
-    } catch (err) {
-      if (attempt === 1) {
-        console.error("❌ Error fetching NASA EONET:", err);
-        fetchEONET._lastLatency = null;
-        return [];
-      }
-      await new Promise((r) => setTimeout(r, 1500));
-    }
+    });
+    fetchEONET._lastLatency = Math.round(performance.now() - t0);
+    return out;
+  } catch (err) {
+    console.error("❌ Error fetching NASA EONET:", err);
+    fetchEONET._lastLatency = null;
+    return [];
   }
-  return [];
 }
 
 async function fetchGDACS() {
   const t0 = performance.now();
   try {
     const today = new Date();
-    const daysAgo = new Date(today.getTime() - 14 * 24 * 3600 * 1000);
+    const daysAgo = new Date(today.getTime() - 7 * 24 * 3600 * 1000);
     const fmt = (d) => d.toISOString().slice(0, 10);
     const url = `${realtimeAPIs.gdacsEvents}&fromDate=${fmt(daysAgo)}&toDate=${fmt(today)}`;
-    const response = await fetchWithTimeout(url, 25000);
+    const response = await fetchWithTimeout(url, 12000);
     if (!response.ok) throw new Error(`GDACS HTTP ${response.status}`);
     const data = await response.json();
     const features = data.features || [];
@@ -538,22 +531,51 @@ async function fetchGDACS() {
   }
 }
 
-async function fetchAllRealtimeData() {
-  actualizarEstadoConexion(
-    "🔄 Obteniendo datos en vivo desde USGS, NASA EONET y GDACS...",
-    "warning",
-  );
+function guardarCacheEnVivo() {
+  try {
+    localStorage.setItem(
+      CACHE_LIVE_KEY,
+      JSON.stringify({
+        eventos: appData.eventosRealesHoy,
+        noticias: appData.noticiasReales,
+        ts: Date.now(),
+      }),
+    );
+  } catch (err) {
+    console.warn("⚠️ No se pudo guardar caché:", err);
+  }
+}
 
-  const results = await Promise.allSettled([
-    fetchEarthquakes(),
-    fetchEONET(),
-    fetchGDACS(),
-  ]);
+function cargarCacheEnVivo() {
+  try {
+    const raw = localStorage.getItem(CACHE_LIVE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data.eventos || !data.eventos.length) return false;
+    appData.eventosRealesHoy = data.eventos;
+    appData.noticiasReales = data.noticias || [];
+    datosEnVivoActivos = true;
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
 
-  const earthquakes = results[0].status === "fulfilled" ? results[0].value : [];
-  const eonet = results[1].status === "fulfilled" ? results[1].value : [];
-  const gdacs = results[2].status === "fulfilled" ? results[2].value : [];
+function refrescarVistaDatos() {
+  updateStats();
+  renderEvents();
+  renderNewsPaginated();
+  loadEventsToMap();
+  updateNewsTitle();
+  const now = new Date();
+  const timeString = `Actualizado: ${now.toLocaleDateString("es-ES", { day: "numeric", month: "short" })} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const lastUpdate = document.getElementById("last-update");
+  if (lastUpdate) lastUpdate.textContent = timeString;
+  const apiTimestamp = document.getElementById("api-timestamp");
+  if (apiTimestamp) apiTimestamp.textContent = timeString;
+}
 
+function procesarDatosEnVivo(earthquakes, eonet, gdacs, opts = {}) {
   const fuentesOK = [];
   if (earthquakes.length) fuentesOK.push(`USGS (${earthquakes.length})`);
   if (eonet.length) fuentesOK.push(`EONET (${eonet.length})`);
@@ -563,18 +585,13 @@ async function fetchAllRealtimeData() {
 
   if (todos.length === 0) {
     datosEnVivoActivos = false;
-    actualizarEstadoConexion(
-      "⚠️ Sin conexión a fuentes en vivo - mostrando datos cacheados",
-      "warning",
-    );
     return false;
   }
 
   todos.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
 
-  const nuevos = todos.filter(
-    (ev) => !idsAlertados.has(ev.id) && idsAlertados.size > 0,
-  );
+  const notificar = opts.notificar !== false && idsAlertados.size > 0;
+  const nuevos = todos.filter((ev) => !idsAlertados.has(ev.id));
   todos.forEach((ev) => idsAlertados.add(ev.id));
 
   const tm = configuracion.tiposMonitoreados || {};
@@ -607,26 +624,86 @@ async function fetchAllRealtimeData() {
 
   ultimaActualizacionLive = new Date();
   datosEnVivoActivos = true;
-  actualizarEstadoConexion(
-    `🟢 EN VIVO - ${fuentesOK.join(" + ")} - ${todos.length} eventos`,
-    "success",
-  );
 
-  if (nuevos.length > 0 && nuevos.length <= 5) {
+  if (notificar && nuevos.length > 0 && nuevos.length <= 5) {
     nuevos.slice(0, 3).forEach((ev) => {
       showNotification(
         `${ev.icono} ${ev.titulo} (${ev.ubicacion})`,
         ev.nivel === "CRITICO" || ev.nivel === "ALTO" ? "error" : "warning",
       );
     });
-  } else if (nuevos.length > 5) {
+  } else if (notificar && nuevos.length > 5) {
     showNotification(
       `🚨 ${nuevos.length} nuevos eventos detectados en tiempo real`,
       "warning",
     );
   }
 
+  if (fuentesOK.length) {
+    actualizarEstadoConexion(
+      `🟢 EN VIVO - ${fuentesOK.join(" + ")} - ${todos.length} eventos`,
+      "success",
+    );
+  }
+
   return true;
+}
+
+async function fetchAllRealtimeData(opts = {}) {
+  if (cargaEnCurso) return datosEnVivoActivos;
+  cargaEnCurso = true;
+  const staged = opts.staged !== false;
+
+  try {
+    let earthquakes = [];
+    let eonet = [];
+    let gdacs = [];
+
+    if (staged) {
+      actualizarEstadoConexion("🔄 Cargando terremotos (USGS)...", "warning");
+      earthquakes = await fetchEarthquakes();
+      if (earthquakes.length) {
+        procesarDatosEnVivo(earthquakes, [], [], { notificar: false });
+        refrescarVistaDatos();
+        guardarCacheEnVivo();
+      }
+
+      actualizarEstadoConexion("🔄 Cargando volcanes, tormentas y alertas...", "warning");
+      const rest = await Promise.allSettled([fetchEONET(), fetchGDACS()]);
+      eonet = rest[0].status === "fulfilled" ? rest[0].value : [];
+      gdacs = rest[1].status === "fulfilled" ? rest[1].value : [];
+    } else {
+      actualizarEstadoConexion(
+        "🔄 Obteniendo datos en vivo desde USGS, NASA EONET y GDACS...",
+        "warning",
+      );
+      const results = await Promise.allSettled([
+        fetchEarthquakes(),
+        fetchEONET(),
+        fetchGDACS(),
+      ]);
+      earthquakes = results[0].status === "fulfilled" ? results[0].value : [];
+      eonet = results[1].status === "fulfilled" ? results[1].value : [];
+      gdacs = results[2].status === "fulfilled" ? results[2].value : [];
+    }
+
+    const ok = procesarDatosEnVivo(earthquakes, eonet, gdacs, {
+      notificar: opts.notificar !== false,
+    });
+
+    if (!ok) {
+      actualizarEstadoConexion(
+        "⚠️ Sin conexión a fuentes en vivo - mostrando datos en caché",
+        "warning",
+      );
+      return false;
+    }
+
+    guardarCacheEnVivo();
+    return true;
+  } finally {
+    cargaEnCurso = false;
+  }
 }
 
 // INICIALIZACIÓN
@@ -643,7 +720,7 @@ function setupAutoRefresh() {
     clearInterval(autoRefreshTimer);
     autoRefreshTimer = null;
   }
-  const minutos = Number(configuracion.frecuenciaActualizacion) || 5;
+  const minutos = Number(configuracion.frecuenciaActualizacion) || 10;
   const ms = Math.max(1, minutos) * 60 * 1000;
   autoRefreshTimer = setInterval(async () => {
     console.log(`🔄 Auto-refresh en vivo (cada ${minutos} min)...`);
@@ -654,19 +731,11 @@ function setupAutoRefresh() {
 
 async function ejecutarActualizacionEnVivo(opts = {}) {
   const silent = opts.silent === true;
-  const ok = await fetchAllRealtimeData();
-  updateStats();
-  renderEvents();
-  renderNewsPaginated();
-  loadEventsToMap();
-  updateNewsTitle();
-
-  const now = new Date();
-  const timeString = `Actualizado: ${now.toLocaleDateString("es-ES", { day: "numeric", month: "short" })} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  const lastUpdate = document.getElementById("last-update");
-  if (lastUpdate) lastUpdate.textContent = timeString;
-  const apiTimestamp = document.getElementById("api-timestamp");
-  if (apiTimestamp) apiTimestamp.textContent = timeString;
+  const ok = await fetchAllRealtimeData({
+    staged: opts.staged !== false,
+    notificar: !silent,
+  });
+  refrescarVistaDatos();
 
   if (!silent) {
     showNotification(
@@ -679,32 +748,34 @@ async function ejecutarActualizacionEnVivo(opts = {}) {
   return ok;
 }
 
-async function inicializarAplicacion() {
+function inicializarAplicacion() {
   cargarConfiguracion();
   renderApisPaginated();
   updateNewsTitle();
 
   sonidoNotificacion = document.getElementById("notification-sound");
 
-  setTimeout(() => {
-    inicializarMapaLeaflet();
-  }, 600);
-
-  renderEvents();
-  renderNewsPaginated();
-  updateStats();
-
-  try {
-    await fetchAllRealtimeData();
-    updateStats();
+  const teniaCache = cargarCacheEnVivo();
+  if (teniaCache) {
+    refrescarVistaDatos();
+    actualizarEstadoConexion(
+      "📦 Mostrando última actualización — refrescando en segundo plano...",
+      "info",
+    );
+  } else {
     renderEvents();
     renderNewsPaginated();
-    loadEventsToMap();
-  } catch (err) {
-    console.error("❌ Error en carga inicial en vivo:", err);
+    updateStats();
+    actualizarEstadoConexion("🔄 Cargando datos en vivo...", "warning");
   }
 
-  console.log("✅ Sistema inicializado con datos en vivo");
+  setTimeout(() => inicializarMapaLeaflet(), 100);
+
+  fetchAllRealtimeData({ staged: true, notificar: false })
+    .then(() => refrescarVistaDatos())
+    .catch((err) => console.error("❌ Error en carga inicial en vivo:", err));
+
+  console.log("✅ Sistema inicializado (carga progresiva + auto-refresh)");
 }
 
 // =============================================
@@ -1028,7 +1099,7 @@ function configurarEventListeners() {
   const updateFrequencySel = document.getElementById("update-frequency");
   if (updateFrequencySel) {
     updateFrequencySel.addEventListener("change", (e) => {
-      configuracion.frecuenciaActualizacion = Number(e.target.value) || 5;
+      configuracion.frecuenciaActualizacion = Number(e.target.value) || 10;
       setupAutoRefresh();
       showNotification(
         `⏱️ Frecuencia de actualización: cada ${configuracion.frecuenciaActualizacion} min`,
@@ -1632,7 +1703,7 @@ function guardarConfiguracion() {
 
   if (locInput) configuracion.ubicacion = locInput.value.trim();
   if (radSlider) configuracion.radio = Number(radSlider.value) || 500;
-  if (freqSel) configuracion.frecuenciaActualizacion = Number(freqSel.value) || 5;
+  if (freqSel) configuracion.frecuenciaActualizacion = Number(freqSel.value) || 10;
   if (alertSel) configuracion.nivelMinimo = alertSel.value;
 
   document

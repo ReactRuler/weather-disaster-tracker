@@ -1997,12 +1997,31 @@ function contarEventosPorFiltroLeyenda(filtro) {
   return eventos.filter((ev) => eventoCoincideFiltroMapa(ev, filtro)).length;
 }
 
+function ordenarLeyendaPorConteos() {
+  const container = document.getElementById("map-legend-items");
+  if (!container) return;
+  const items = [...container.querySelectorAll(".legend-item[data-filter]")];
+  const todos = items.find((el) => el.dataset.filter === "all");
+  const rest = items.filter((el) => el.dataset.filter !== "all");
+  rest.sort((a, b) => {
+    const ca = Number(a.querySelector(".legend-count")?.textContent || 0);
+    const cb = Number(b.querySelector(".legend-count")?.textContent || 0);
+    if (cb !== ca) return cb - ca;
+    const la = a.querySelector(".legend-label")?.textContent || "";
+    const lb = b.querySelector(".legend-label")?.textContent || "";
+    return la.localeCompare(lb, "es");
+  });
+  if (todos) container.appendChild(todos);
+  rest.forEach((el) => container.appendChild(el));
+}
+
 function actualizarConteosLeyenda() {
   document.querySelectorAll(".legend-item[data-filter]").forEach((el) => {
     const filtro = el.dataset.filter;
     const badge = el.querySelector(".legend-count");
     if (badge) badge.textContent = String(contarEventosPorFiltroLeyenda(filtro));
   });
+  ordenarLeyendaPorConteos();
 }
 
 function setMapFiltro(filtro) {
